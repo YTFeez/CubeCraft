@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createNoise2D, createNoise3D } from 'simplex-noise';
 import { BLOCK, isOpaque, isSolid, isFluid, BLOCK_INFO, tileUV, getFaceTile } from './blocks.js';
+import { BIOMES } from './themes.js';
 
 export const CHUNK_SIZE = 16;
 export const WORLD_HEIGHT = 64;
@@ -54,6 +55,10 @@ export class World {
     this.noise2D = createNoise2D(rand);
     this.noise2Db = createNoise2D(rand);
     this.noise3D = createNoise3D(rand);
+    // Two extra noises dedicated to biome selection so the biome map is
+    // fully decoupled from the height noise.
+    this.biomeNoiseA = createNoise2D(rand);
+    this.biomeNoiseB = createNoise2D(rand);
     this.rand = rand;
     this.dirty = new Set();
   }
@@ -249,22 +254,85 @@ export class Chunk {
   }
 
   generate() {
+    const theme = this.world.theme;
+    if (theme.flat) this._generateFlat();
+    else this._generateTerrain();
+    this._applyEdits();
+  }
+
+  _applyEdits() {
+    const edits = this.world.edits.get(this.world.key(this.cx, this.cz));
+    if (!edits) return;
+    for (const [pos, id] of edits) {
+      const [lx, ly, lz] = pos.split(',').map(Number);
+      this.set(lx, ly, lz, id);
+    }
+  }
+
+  // Flat arena world: bedrock at y=0, stone, then a single grass cap.
+  _generateFlat() {
+    const theme = this.world.theme;
+    const top = theme.flatHeight ?? 24;
+    const surf = theme.surface;
+    for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+      for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+        for (let y = 0; y < WORLD_HEIGHT; y++) {
+          let block = BLOCK.AIR;
+          if (y === 0) block = surf.bedrock;
+          else if (y < top - 1) block = surf.deep;
+          else if (y < top) block = surf.sub;
+          else if (y === top) block = surf.top;
+          this.set(lx, y, lz, block);
+        }
+      }
+    }
+  }
+
+  // Pick a biome for a (worldX, worldZ) column on a multi-biome world.
+  _pickBiome(wx, wz, freq) {
+    const a = this.world.biomeNoiseA(wx * freq, wz * freq);
+    const b = this.world.biomeNoiseB(wx * freq + 100, wz * freq - 100);
+    if (a >= 0 && b >= 0) return BIOMES.forest;
+    if (a >= 0 && b < 0)  return BIOMES.desert;
+    if (a < 0 && b >= 0)  return BIOMES.tundra;
+    return BIOMES.volcanic;
+  }
+
+  // Standard heightmap generation. Per-column biome lookup if multiBiome.
+  _generateTerrain() {
     const { noise2D, noise2Db } = this.world;
     const theme = this.world.theme;
     const origin = [this.cx * CHUNK_SIZE, this.cz * CHUNK_SIZE];
     const heights = new Int32Array(CHUNK_SIZE * CHUNK_SIZE);
+    const biomeAt = new Array(CHUNK_SIZE * CHUNK_SIZE);
 
-    const seaLevel = theme.seaLevel ?? SEA_LEVEL;
-    const [a1, a2, a3] = theme.heightAmp;
-    const [f1, f2, f3] = theme.heightFreq;
-    const offset = theme.heightOffset || 0;
-    const surf = theme.surface;
-    const fluid = theme.fluid;
+    const multi = !!theme.multiBiome;
+    const biomeFreq = theme.biomeFreq || 0.005;
+
+    // Default (single-biome) params come straight from the theme.
+    const defaultBiome = multi ? null : {
+      seaLevel: theme.seaLevel ?? SEA_LEVEL,
+      heightAmp: theme.heightAmp,
+      heightFreq: theme.heightFreq,
+      heightOffset: theme.heightOffset || 0,
+      surface: theme.surface,
+      fluid: theme.fluid,
+      trees: theme.trees || { density: 0, type: 'none' },
+    };
 
     for (let lz = 0; lz < CHUNK_SIZE; lz++) {
       for (let lx = 0; lx < CHUNK_SIZE; lx++) {
         const wx = origin[0] + lx;
         const wz = origin[1] + lz;
+        const biome = multi ? this._pickBiome(wx, wz, biomeFreq) : defaultBiome;
+        biomeAt[lz * CHUNK_SIZE + lx] = biome;
+
+        const [a1, a2, a3] = biome.heightAmp;
+        const [f1, f2, f3] = biome.heightFreq;
+        const offset = biome.heightOffset || 0;
+        const seaLevel = biome.seaLevel ?? SEA_LEVEL;
+        const surf = biome.surface;
+        const fluid = biome.fluid;
 
         const n1 = noise2D(wx * f1, wz * f1) * a1;
         const n2 = noise2D(wx * f2, wz * f2) * a2;
@@ -292,25 +360,24 @@ export class Chunk {
     const chRand = mulberry32(
       (hashStr(this.world.seed) ^ (this.cx * 73856093) ^ (this.cz * 19349663)) >>> 0
     );
-    const tcfg = theme.trees || { density: 0, type: 'none' };
-    const treeCount = Math.floor(chRand() * (tcfg.density + 1));
+    // For multi-biome chunks, scale density by area count so we still get a
+    // good number of trees overall.
+    const baseDensity = multi ? 5 : (defaultBiome.trees.density || 0);
+    const treeCount = Math.floor(chRand() * (baseDensity + 1));
     for (let i = 0; i < treeCount; i++) {
       const tx = Math.floor(chRand() * CHUNK_SIZE);
       const tz = Math.floor(chRand() * CHUNK_SIZE);
       const h = heights[tz * CHUNK_SIZE + tx];
+      const biome = biomeAt[tz * CHUNK_SIZE + tx];
+      const tcfg = biome.trees || { density: 0, type: 'none' };
+      if (!tcfg.type || tcfg.type === 'none') continue;
+      const seaLevel = biome.seaLevel ?? SEA_LEVEL;
       if (h <= seaLevel + 1) continue;
       if (tx < 2 || tx > CHUNK_SIZE - 3 || tz < 2 || tz > CHUNK_SIZE - 3) continue;
+      // Don't grow on top of fluid (e.g. lava lakes in volcanic biome).
+      const top = this.get(tx, h, tz);
+      if (top === BLOCK.LAVA || top === BLOCK.WATER || top === BLOCK.ICE) continue;
       this._growTree(tcfg.type, tx, h, tz, chRand);
-    }
-
-    // Apply persistent user edits last (server-broadcast or local) so they
-    // override generated terrain when chunks are re-meshed.
-    const edits = this.world.edits.get(this.world.key(this.cx, this.cz));
-    if (edits) {
-      for (const [pos, id] of edits) {
-        const [lx, ly, lz] = pos.split(',').map(Number);
-        this.set(lx, ly, lz, id);
-      }
     }
   }
 

@@ -15,27 +15,38 @@ const accounts = require('./server/accounts');
 const PORT = process.env.PORT || 8080;
 const SAVE_DIR = path.join(__dirname, 'world-saves');
 const SAVE_INTERVAL_MS = 30_000;
+const DAY_LENGTH_S = 240; // one in-game day = 240 real seconds
+const GLOBAL_TIME_FILE = path.join(SAVE_DIR, '_global-time.json');
 
 // --- Themes (server only needs id + seed; everything visual is client-side) ---
 const ROOMS = [
-  { id: 'forest',   name: 'Forêt',     seed: 'forest-2026' },
-  { id: 'desert',   name: 'Désert',    seed: 'desert-2026' },
-  { id: 'tundra',   name: 'Toundra',   seed: 'tundra-2026' },
-  { id: 'volcanic', name: 'Volcanique', seed: 'volcanic-2026' },
+  { id: 'faction', name: 'Faction',           seed: 'faction-2026' },
+  { id: 'minage',  name: 'Minage',            seed: 'minage-2026'  },
+  { id: 'event',   name: 'Événement',         seed: 'event-2026'   },
+  { id: 'pvp',     name: 'Mini-jeux & PvP',   seed: 'pvp-2026'     },
 ];
 
 // --- Persistent state ---
 if (!fs.existsSync(SAVE_DIR)) fs.mkdirSync(SAVE_DIR, { recursive: true });
 
+// Single time-of-day shared by *all* rooms. Restored from disk on boot, ticked
+// by the server itself so it never drifts and is identical for every player.
+let globalTimeOfDay = 0.3;
+let globalTimeDirty = false;
+try {
+  if (fs.existsSync(GLOBAL_TIME_FILE)) {
+    const data = JSON.parse(fs.readFileSync(GLOBAL_TIME_FILE, 'utf8'));
+    if (typeof data.t === 'number') globalTimeOfDay = ((data.t % 1) + 1) % 1;
+  }
+} catch {}
+
 function loadRoom(roomDef) {
   const file = path.join(SAVE_DIR, `${roomDef.id}.json`);
   let edits = {};
-  let timeOfDay = 0.3;
   if (fs.existsSync(file)) {
     try {
       const data = JSON.parse(fs.readFileSync(file, 'utf8'));
       edits = data.edits || {};
-      timeOfDay = typeof data.timeOfDay === 'number' ? data.timeOfDay : 0.3;
     } catch (e) {
       console.warn(`[${roomDef.id}] save illisible:`, e.message);
     }
@@ -43,7 +54,6 @@ function loadRoom(roomDef) {
   return {
     ...roomDef,
     edits,             // { "cx,cz": { "lx,ly,lz": blockId, ... }, ... }
-    timeOfDay,
     players: new Map(),// id -> { ws, name, x, y, z, yaw, pitch, color }
     dirty: false,
   };
@@ -54,14 +64,30 @@ const rooms = new Map(ROOMS.map(r => [r.id, loadRoom(r)]));
 function saveRoom(room) {
   if (!room.dirty) return;
   const file = path.join(SAVE_DIR, `${room.id}.json`);
-  const data = { edits: room.edits, timeOfDay: room.timeOfDay, savedAt: Date.now() };
+  const data = { edits: room.edits, savedAt: Date.now() };
   fs.writeFile(file, JSON.stringify(data), err => {
     if (err) console.warn(`[${room.id}] save error:`, err.message);
   });
   room.dirty = false;
 }
 
-setInterval(() => { for (const r of rooms.values()) saveRoom(r); }, SAVE_INTERVAL_MS);
+function saveGlobalTime() {
+  if (!globalTimeDirty) return;
+  fs.writeFile(GLOBAL_TIME_FILE, JSON.stringify({ t: globalTimeOfDay }), () => {});
+  globalTimeDirty = false;
+}
+
+setInterval(() => {
+  for (const r of rooms.values()) saveRoom(r);
+  saveGlobalTime();
+}, SAVE_INTERVAL_MS);
+
+// Server-driven clock: tick once per second, broadcast to everyone every 5s.
+const TIME_TICK_MS = 1000;
+setInterval(() => {
+  globalTimeOfDay = (globalTimeOfDay + (TIME_TICK_MS / 1000) / DAY_LENGTH_S) % 1;
+  globalTimeDirty = true;
+}, TIME_TICK_MS);
 
 // --- Express ---
 const app = express();
@@ -191,7 +217,7 @@ wss.on('connection', (ws) => {
         type: 'welcome',
         you: { id: playerId, name, color },
         room: { id: room.id, name: room.name, seed: room.seed },
-        timeOfDay: room.timeOfDay,
+        timeOfDay: globalTimeOfDay,
         edits: room.edits,
         spawn: saved.x != null
           ? { x: saved.x, y: saved.y, z: saved.z, yaw: saved.yaw || 0, pitch: saved.pitch || 0, slot: saved.slot || 0 }
@@ -246,13 +272,7 @@ wss.on('connection', (ws) => {
         break;
       }
       case 'time': {
-        if (typeof msg.t === 'number' && room.players.size > 0) {
-          const first = room.players.values().next().value;
-          if (first.id === playerId) {
-            room.timeOfDay = ((msg.t % 1) + 1) % 1;
-            room.dirty = true;
-          }
-        }
+        // Time is now server-authoritative. Ignore client-driven time updates.
         break;
       }
       case 'slot': {
@@ -288,14 +308,11 @@ wss.on('connection', (ws) => {
   });
 });
 
-// --- Periodic time broadcast (so latecomers stay in sync if leader leaves) ---
+// --- Periodic global time broadcast: every 5s, every room receives the same t ---
 setInterval(() => {
+  const text = JSON.stringify({ type: 'timeSync', t: globalTimeOfDay });
   for (const room of rooms.values()) {
     if (room.players.size === 0) continue;
-    // Advance time on the server too (1 day = 240s).
-    // Only meaningful when no leader is connected; otherwise leader will overwrite.
-    // We do not advance here to avoid double-tick; clients drive the clock.
-    const text = JSON.stringify({ type: 'timeSync', t: room.timeOfDay });
     for (const p of room.players.values()) {
       if (p.ws.readyState === p.ws.OPEN) p.ws.send(text);
     }
@@ -322,6 +339,7 @@ function shutdown() {
     }
     r.dirty = true; saveRoom(r);
   }
+  globalTimeDirty = true; saveGlobalTime();
   try { accounts.saveSync(); } catch {}
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 1500);

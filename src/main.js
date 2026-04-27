@@ -346,7 +346,8 @@ async function createSession(theme, name) {
       world.applyRemoteEdit(m.cx, m.cz, m.lx, m.ly, m.lz, m.blockId);
     },
     timeSync: (m) => {
-      if (!session.leader && typeof m.t === 'number') session.timeOfDay = m.t;
+      // Server is authoritative for time-of-day; just trust it.
+      if (typeof m.t === 'number' && session) session.timeOfDay = m.t;
     },
     chat: (m) => addChatLine(m.from, m.text, m.color),
     error: (m) => {
@@ -368,9 +369,6 @@ async function createSession(theme, name) {
 
   const network = new Network({ url: wsUrl, roomId: theme.id, name, token: auth.token, handlers });
   const welcome = await network.connect();
-
-  // The room owner (first player) is the time-of-day leader.
-  let leader = welcome.players.length === 0;
 
   // Apply initial world state from the server.
   world.applyServerEdits(welcome.edits || {});
@@ -422,17 +420,10 @@ async function createSession(theme, name) {
     sky, skyU, sun, hemi, ambient, stars, clouds,
     opaqueMat, transparentMat, waterMat, waterTime,
     network, remotePlayers, knownPlayers,
-    leader, timeOfDay: welcome.timeOfDay ?? 0.3,
+    timeOfDay: welcome.timeOfDay ?? 0.3,
     spawn: welcome.spawn || null,
     refreshPlayersList,
     bobPhase: 0, currentFov: baseFov,
-  };
-
-  // Promote ourselves to leader if everyone else leaves.
-  const originalLeave = handlers.playerLeave;
-  network.handlers.playerLeave = (m) => {
-    originalLeave(m);
-    if (knownPlayers.size <= 1) session.leader = true;
   };
 
   return session;
@@ -656,9 +647,6 @@ window.addEventListener('keydown', e => {
   if (e.code === 'KeyT') {
     e.preventDefault();
     openChat();
-  } else if (e.code === 'KeyL' && session.leader) {
-    session.timeOfDay = (session.timeOfDay + 0.5) % 1;
-    session.network.sendTime(session.timeOfDay);
   }
 });
 
@@ -669,7 +657,6 @@ let last = performance.now();
 let frames = 0;
 let fpsTimer = 0;
 let animating = false;
-let netTimeTick = 0;
 
 function animate() {
   requestAnimationFrame(animate);
@@ -732,11 +719,6 @@ function animate() {
 
   // === Networking heartbeat ===
   s.network.sendPos(s.player.position.x, s.player.position.y, s.player.position.z, s.player.yaw, s.player.pitch);
-  netTimeTick += dt;
-  if (s.leader && netTimeTick > 5) {
-    s.network.sendTime(s.timeOfDay);
-    netTimeTick = 0;
-  }
 
   // HUD
   const hours = Math.floor(s.timeOfDay * 24);
