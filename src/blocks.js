@@ -239,7 +239,8 @@ const RESOURCE_PACK_TEXTURES = '/texture-pack/assets/minecraft/textures/';
 function loadPackImage(url) {
   return new Promise((resolve) => {
     const im = new Image();
-    im.crossOrigin = 'anonymous';
+    // Ne pas mettre crossOrigin en same-origin : sans en-têtes CORS sur les PNG,
+    // le navigateur peut refuser l’image et on retombe alors tout le temps sur le procédural.
     im.decoding = 'async';
     im.onload = () => resolve(im);
     im.onerror = () => resolve(null);
