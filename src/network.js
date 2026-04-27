@@ -93,4 +93,8 @@ export class Network {
   sendChat(text) { this.send({ type: 'chat', text }); }
 
   sendSlot(slot) { this.send({ type: 'slot', slot }); }
+
+  sendInventory(slots) { this.send({ type: 'inventory', slots }); }
+
+  sendHealth(health, air) { this.send({ type: 'health', health, air }); }
 }

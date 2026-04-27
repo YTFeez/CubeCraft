@@ -43,6 +43,14 @@ const playersPanel = document.getElementById('players-panel');
 const playersList  = document.getElementById('players-list');
 const chatLog      = document.getElementById('chat-log');
 const chatInput    = document.getElementById('chat-input');
+const survivalHud  = document.getElementById('survival-hud');
+const heartsEl     = document.getElementById('hearts');
+const airBarEl     = document.getElementById('air-bar');
+const airFillEl    = document.getElementById('air-fill');
+const deathOverlay = document.getElementById('death-overlay');
+const deathCause   = document.getElementById('death-cause');
+const respawnBtn   = document.getElementById('respawn-btn');
+const damageFlash  = document.getElementById('damage-flash');
 
 // =========================================================================
 // SELECTION SCREEN (rendered first so it's always visible)
@@ -410,12 +418,24 @@ async function createSession(theme, name) {
     }
   }
 
+  // === Survival mode setup ===
+  const isSurvival = theme.mode === 'survival';
+  player.setMode(theme.mode || 'creative');
+  if (isSurvival) {
+    if (typeof welcome.spawn?.health === 'number') player.health = Math.max(1, Math.min(player.maxHealth, welcome.spawn.health));
+    if (typeof welcome.spawn?.air === 'number') player.airTime = Math.max(0, Math.min(player.maxAir, welcome.spawn.air));
+  }
+
   // === Interaction / hotbar (per-theme blocks) ===
   const initialSlot = welcome.spawn?.slot | 0;
+  let invDirty = false;
+  let lastInvSent = 0;
   const interaction = new Interaction({
     camera, world, player, scene, atlasCanvas, audio,
     hotbar: theme.hotbar,
     initialSlot,
+    mode: theme.mode || 'creative',
+    initialInventory: welcome.spawn?.inventory || null,
     onBreak: (x, y, z, id) => particles.spawnBreak(x, y, z, id),
     onEdit: (x, y, z, id) => {
       const cx = Math.floor(x / CHUNK_SIZE);
@@ -425,6 +445,7 @@ async function createSession(theme, name) {
       network.sendEdit(cx, cz, lx, y, lz, id);
     },
     onSlot: (slot) => network.sendSlot(slot),
+    onInventoryChange: () => { if (isSurvival) invDirty = true; },
   });
 
   const session = {
@@ -436,9 +457,113 @@ async function createSession(theme, name) {
     spawn: welcome.spawn || null,
     refreshPlayersList,
     bobPhase: 0, currentFov: baseFov,
+    isSurvival,
+    get invDirty() { return invDirty; },
+    set invDirty(v) { invDirty = v; },
+    get lastInvSent() { return lastInvSent; },
+    set lastInvSent(v) { lastInvSent = v; },
   };
 
+  // === Wire survival HUD + death ===
+  setupSurvivalHud(session);
+
   return session;
+}
+
+// =========================================================================
+// SURVIVAL HUD + DEATH
+// =========================================================================
+function setupSurvivalHud(s) {
+  const isSurv = s.isSurvival;
+  survivalHud.classList.toggle('hidden', !isSurv);
+  airBarEl.classList.add('hidden');
+  damageFlash.classList.remove('on');
+  deathOverlay.classList.add('hidden');
+
+  if (!isSurv) {
+    s.player.onHealthChange = null;
+    s.player.onAirChange = null;
+    s.player.onDamage = null;
+    s.player.onDeath = null;
+    return;
+  }
+
+  renderHearts(s.player.health, s.player.maxHealth);
+  renderAir(s.player.airTime, s.player.maxAir);
+  let healthDirty = false;
+
+  s.player.onHealthChange = (hp, max) => {
+    renderHearts(hp, max);
+    healthDirty = true;
+  };
+  s.player.onAirChange = (air, max) => {
+    renderAir(air, max);
+    healthDirty = true;
+  };
+  s.player.onDamage = () => {
+    damageFlash.classList.add('on');
+    setTimeout(() => damageFlash.classList.remove('on'), 220);
+  };
+  s.player.onDeath = (cause) => {
+    deathCause.textContent = causeText(cause);
+    deathOverlay.classList.remove('hidden');
+    if (document.pointerLockElement) document.exitPointerLock();
+  };
+
+  s._healthDirty = () => healthDirty;
+  s._clearHealthDirty = () => { healthDirty = false; };
+}
+
+function renderHearts(hp, max) {
+  if (!heartsEl) return;
+  const totalHearts = Math.ceil(max / 2);
+  const filled = Math.floor(hp / 2);
+  const half = hp % 2 === 1;
+  let html = '';
+  for (let i = 0; i < totalHearts; i++) {
+    let cls = 'heart empty';
+    if (i < filled) cls = 'heart full';
+    else if (i === filled && half) cls = 'heart half';
+    html += `<span class="${cls}"></span>`;
+  }
+  heartsEl.innerHTML = html;
+}
+
+function renderAir(air, max) {
+  if (!airBarEl || !airFillEl) return;
+  const ratio = Math.max(0, Math.min(1, air / max));
+  if (ratio >= 0.999) {
+    airBarEl.classList.add('hidden');
+  } else {
+    airBarEl.classList.remove('hidden');
+    airFillEl.style.width = `${ratio * 100}%`;
+  }
+}
+
+function causeText(cause) {
+  switch (cause) {
+    case 'fall':  return 'Tu es tombé de trop haut.';
+    case 'lave':
+    case 'lava':  return 'Tu as fondu dans la lave.';
+    case 'drown': return 'Tu t\u2019es noyé.';
+    case 'void':  return 'Tu es tombé dans le vide.';
+    default:      return 'Tu es mort.';
+  }
+}
+
+respawnBtn?.addEventListener('click', () => {
+  if (!session) return;
+  doRespawn();
+});
+
+function doRespawn() {
+  if (!session) return;
+  const p = session.player;
+  p.respawn();
+  p.reviveAt(p.position.x, p.position.y, p.position.z);
+  deathOverlay.classList.add('hidden');
+  // After respawn, treat inventory as dirty so server saves the (possibly cleared) state.
+  if (session.isSurvival) session.invDirty = true;
 }
 
 async function initialGenerate(s) {
@@ -497,8 +622,14 @@ async function initialGenerate(s) {
 
 function leaveSession() {
   if (!session) return;
+  if (session.isSurvival) {
+    try { session.network.sendInventory(session.interaction.exportInventory()); } catch {}
+    try { session.network.sendHealth(session.player.health, session.player.airTime); } catch {}
+  }
   try { session.network.disconnect(); } catch {}
   try { session.player.destroy?.(); } catch {}
+  survivalHud.classList.add('hidden');
+  deathOverlay.classList.add('hidden');
 
   session.remotePlayers.clear();
   session.scene.traverse(obj => {
@@ -670,7 +801,9 @@ leaveBtn.addEventListener('click', () => {
 
 document.addEventListener('pointerlockchange', () => {
   if (!session) return;
-  if (!document.pointerLockElement && !chatInput.classList.contains('visible')) {
+  if (!document.pointerLockElement
+      && !chatInput.classList.contains('visible')
+      && deathOverlay.classList.contains('hidden')) {
     menu.classList.remove('hidden');
   }
 });
@@ -753,6 +886,21 @@ function animate() {
 
   // === Networking heartbeat ===
   s.network.sendPos(s.player.position.x, s.player.position.y, s.player.position.z, s.player.yaw, s.player.pitch);
+
+  // Survival state sync (debounced).
+  if (s.isSurvival) {
+    const nowMs = performance.now();
+    if (s.invDirty && nowMs - s.lastInvSent > 1500) {
+      s.network.sendInventory(s.interaction.exportInventory());
+      s.lastInvSent = nowMs;
+      s.invDirty = false;
+    }
+    if (s._healthDirty && s._healthDirty() && nowMs - (s._lastHealthSent || 0) > 800) {
+      s.network.sendHealth(s.player.health, s.player.airTime);
+      s._clearHealthDirty();
+      s._lastHealthSent = nowMs;
+    }
+  }
 
   // HUD
   const hours = Math.floor(s.timeOfDay * 24);

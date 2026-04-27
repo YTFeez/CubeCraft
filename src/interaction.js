@@ -2,24 +2,36 @@ import * as THREE from 'three';
 import { BLOCK, HOTBAR_BLOCKS, BLOCK_INFO, isSolid, blockIconDataURL } from './blocks.js';
 
 const REACH = 6;
+const HOTBAR_SIZE = 9;
+const STACK_MAX = 64;
+
+// Blocks the player cannot pick up when broken.
+const NO_DROP = new Set([BLOCK.BEDROCK, BLOCK.WATER, BLOCK.LAVA]);
 
 export class Interaction {
-  constructor({ camera, world, player, scene, atlasCanvas, audio, onChange, onBreak, onEdit, onSlot, hotbar, initialSlot }) {
+  constructor({ camera, world, player, scene, atlasCanvas, audio, onChange, onBreak, onEdit, onSlot, onInventoryChange, hotbar, initialSlot, mode, initialInventory }) {
     this.camera = camera;
     this.world = world;
     this.player = player;
     this.scene = scene;
     this.audio = audio;
+    this.atlasCanvas = atlasCanvas;
     this.onChange = onChange;
     this.onBreak = onBreak;
     this.onEdit = onEdit;
     this.onSlot = onSlot;
-    this.hotbar = hotbar && hotbar.length ? hotbar : HOTBAR_BLOCKS;
-    this.selectedIndex = Math.max(0, Math.min(this.hotbar.length - 1, initialSlot | 0));
+    this.onInventoryChange = onInventoryChange;
+    this.mode = mode === 'survival' ? 'survival' : 'creative';
+    this._defaultHotbar = (hotbar && hotbar.length ? hotbar : HOTBAR_BLOCKS).slice(0, HOTBAR_SIZE);
+
+    // Build slots: [{ id, count } | null]
+    this.slots = this._buildInitialSlots(initialInventory);
+    this.selectedIndex = Math.max(0, Math.min(HOTBAR_SIZE - 1, initialSlot | 0));
+
     this.raycaster = new THREE.Raycaster();
     this.raycaster.far = REACH;
 
-    this._buildHotbar(atlasCanvas);
+    this._buildHotbarDOM();
     this._buildHighlight();
 
     window.addEventListener('wheel', e => this._onWheel(e), { passive: true });
@@ -27,25 +39,75 @@ export class Interaction {
     window.addEventListener('mousedown', e => this._onMouseDown(e));
   }
 
-  _buildHotbar(atlasCanvas) {
+  _buildInitialSlots(saved) {
+    const slots = new Array(HOTBAR_SIZE).fill(null);
+    if (this.mode === 'creative') {
+      this._defaultHotbar.forEach((id, i) => {
+        if (i < HOTBAR_SIZE) slots[i] = { id, count: Infinity };
+      });
+      return slots;
+    }
+    // Survival: restore from saved snapshot if available.
+    if (Array.isArray(saved)) {
+      for (let i = 0; i < HOTBAR_SIZE; i++) {
+        const s = saved[i];
+        if (s && typeof s.id === 'number' && s.id !== BLOCK.AIR && (s.count | 0) > 0) {
+          slots[i] = { id: s.id, count: Math.min(STACK_MAX, s.count | 0) };
+        }
+      }
+    }
+    return slots;
+  }
+
+  exportInventory() {
+    return this.slots.map(s => (s ? { id: s.id, count: isFinite(s.count) ? s.count : 0 } : null));
+  }
+
+  _buildHotbarDOM() {
     const bar = document.getElementById('hotbar');
     bar.innerHTML = '';
-    this.hotbar.forEach((id, i) => {
+    for (let i = 0; i < HOTBAR_SIZE; i++) {
       const slot = document.createElement('div');
       slot.className = 'slot' + (i === this.selectedIndex ? ' active' : '');
       slot.dataset.index = i;
-      slot.title = BLOCK_INFO[id].name;
       const key = document.createElement('div');
       key.className = 'key';
       key.textContent = (i + 1);
       const icon = document.createElement('div');
       icon.className = 'icon';
-      icon.style.backgroundImage = `url(${blockIconDataURL(id, atlasCanvas)})`;
-      icon.style.backgroundSize = 'cover';
+      const count = document.createElement('div');
+      count.className = 'count';
       slot.appendChild(key);
       slot.appendChild(icon);
+      slot.appendChild(count);
       slot.addEventListener('click', () => this.select(i));
       bar.appendChild(slot);
+    }
+    this._refreshHotbarDOM();
+  }
+
+  _refreshHotbarDOM() {
+    const slots = document.querySelectorAll('#hotbar .slot');
+    slots.forEach((el, i) => {
+      const data = this.slots[i];
+      const icon = el.querySelector('.icon');
+      const count = el.querySelector('.count');
+      el.classList.toggle('active', i === this.selectedIndex);
+      el.classList.toggle('empty', !data);
+      if (data) {
+        icon.style.backgroundImage = `url(${blockIconDataURL(data.id, this.atlasCanvas)})`;
+        icon.style.backgroundSize = 'cover';
+        el.title = BLOCK_INFO[data.id]?.name || '';
+        if (this.mode === 'survival' && isFinite(data.count)) {
+          count.textContent = data.count > 1 ? data.count : '';
+        } else {
+          count.textContent = '';
+        }
+      } else {
+        icon.style.backgroundImage = 'none';
+        el.title = '';
+        count.textContent = '';
+      }
     });
   }
 
@@ -59,15 +121,59 @@ export class Interaction {
   }
 
   select(i) {
-    const next = (i + this.hotbar.length) % this.hotbar.length;
+    const next = ((i % HOTBAR_SIZE) + HOTBAR_SIZE) % HOTBAR_SIZE;
     if (next === this.selectedIndex) return;
     this.selectedIndex = next;
-    const slots = document.querySelectorAll('#hotbar .slot');
-    slots.forEach((s, idx) => s.classList.toggle('active', idx === this.selectedIndex));
+    this._refreshHotbarDOM();
     if (this.onSlot) this.onSlot(this.selectedIndex);
   }
 
-  selectedBlock() { return this.hotbar[this.selectedIndex]; }
+  selectedBlock() {
+    const s = this.slots[this.selectedIndex];
+    return s && s.count > 0 ? s.id : null;
+  }
+
+  // Add `qty` of blockId to inventory; returns true if all units were stored.
+  addBlock(id, qty = 1) {
+    if (NO_DROP.has(id) || qty <= 0) return false;
+    let remaining = qty;
+    for (let i = 0; i < HOTBAR_SIZE && remaining > 0; i++) {
+      const s = this.slots[i];
+      if (s && s.id === id && isFinite(s.count) && s.count < STACK_MAX) {
+        const room = STACK_MAX - s.count;
+        const add = Math.min(room, remaining);
+        s.count += add;
+        remaining -= add;
+      }
+    }
+    for (let i = 0; i < HOTBAR_SIZE && remaining > 0; i++) {
+      if (!this.slots[i]) {
+        const add = Math.min(STACK_MAX, remaining);
+        this.slots[i] = { id, count: add };
+        remaining -= add;
+      }
+    }
+    this._refreshHotbarDOM();
+    if (this.onInventoryChange) this.onInventoryChange();
+    return remaining === 0;
+  }
+
+  _consumeSelected() {
+    const s = this.slots[this.selectedIndex];
+    if (!s || s.count <= 0) return false;
+    if (!isFinite(s.count)) return true; // creative: infinite
+    s.count -= 1;
+    if (s.count <= 0) this.slots[this.selectedIndex] = null;
+    this._refreshHotbarDOM();
+    if (this.onInventoryChange) this.onInventoryChange();
+    return true;
+  }
+
+  setMode(mode, inventory) {
+    this.mode = mode === 'survival' ? 'survival' : 'creative';
+    this.slots = this._buildInitialSlots(inventory);
+    this._refreshHotbarDOM();
+  }
 
   _onWheel(e) {
     const dir = Math.sign(e.deltaY);
@@ -77,17 +183,17 @@ export class Interaction {
   _onKeyDown(e) {
     if (e.code.startsWith('Digit')) {
       const n = parseInt(e.code.slice(5), 10);
-      if (n >= 1 && n <= this.hotbar.length) this.select(n - 1);
+      if (n >= 1 && n <= HOTBAR_SIZE) this.select(n - 1);
     }
   }
 
   _onMouseDown(e) {
     if (!this.player.locked) return;
+    if (this.player.dead) return;
     const hit = this._raycast();
     if (!hit) return;
 
     if (e.button === 0) {
-      // Break
       const { x, y, z, id } = hit.block;
       if (id === BLOCK.BEDROCK) return;
       this.world.setBlock(x, y, z, BLOCK.AIR);
@@ -95,13 +201,15 @@ export class Interaction {
       this.onBreak?.(x, y, z, id);
       this.onEdit?.(x, y, z, BLOCK.AIR);
       this.onChange?.();
+      if (this.mode === 'survival') this.addBlock(id, 1);
     } else if (e.button === 2) {
-      // Place adjacent
+      const id = this.selectedBlock();
+      if (id == null) return;
       const nx = hit.block.x + hit.normal.x;
       const ny = hit.block.y + hit.normal.y;
       const nz = hit.block.z + hit.normal.z;
       if (this._blockIntersectsPlayer(nx, ny, nz)) return;
-      const id = this.selectedBlock();
+      if (!this._consumeSelected()) return;
       this.world.setBlock(nx, ny, nz, id);
       this.audio?.playPlace(id);
       this.onEdit?.(nx, ny, nz, id);
@@ -120,7 +228,6 @@ export class Interaction {
             bz + 1 > minZ && bz < maxZ);
   }
 
-  // Voxel ray traversal (Amanatides & Woo) from camera.
   _raycast() {
     const origin = new THREE.Vector3();
     const dir = new THREE.Vector3();
@@ -180,7 +287,7 @@ export class Interaction {
   }
 
   updateHighlight() {
-    if (!this.player.locked) {
+    if (!this.player.locked || this.player.dead) {
       this.highlight.visible = false;
       return;
     }

@@ -60,7 +60,8 @@ export const THEMES = {
   faction: {
     id: 'faction',
     name: 'Faction',
-    tagline: 'Conquêtes et bases dans un monde aux 4 biomes',
+    mode: 'survival',
+    tagline: 'Conquêtes et bases · mode survie',
     color: '#c43a3a',
     accent: '#ffb86b',
     seed: 'faction-2026',
@@ -74,7 +75,8 @@ export const THEMES = {
   minage: {
     id: 'minage',
     name: 'Minage',
-    tagline: 'Tous les biomes, toutes les ressources',
+    mode: 'survival',
+    tagline: 'Survie minière · creuse pour vivre',
     color: '#7a6648',
     accent: '#bfa980',
     seed: 'minage-2026',
@@ -88,7 +90,8 @@ export const THEMES = {
   event: {
     id: 'event',
     name: 'Événement',
-    tagline: 'Monde dédié aux fêtes et constructions communautaires',
+    mode: 'creative',
+    tagline: 'Créatif · construis sans limite',
     color: '#a04abf',
     accent: '#f37cd2',
     seed: 'event-2026',
@@ -107,7 +110,8 @@ export const THEMES = {
   pvp: {
     id: 'pvp',
     name: 'Mini-jeux & PvP',
-    tagline: 'Arène plate, duels rapides, parkour',
+    mode: 'creative',
+    tagline: 'Arène plate · duels et parkour',
     color: '#1f2933',
     accent: '#ff5c5c',
     seed: 'pvp-2026',

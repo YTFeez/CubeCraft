@@ -30,6 +30,25 @@ export class Player {
     this.running = false;
     this.locked = false;
 
+    // --- Survival state ---
+    this.surviveMode = false;
+    this.maxHealth = 20;
+    this.health = 20;
+    this.maxAir = 15; // seconds underwater
+    this.airTime = 15;
+    this.dead = false;
+    this._damageImmuneUntil = 0;
+    this._lastDamageAt = -Infinity;
+    this._peakY = this.position.y;
+    this._wasOnGround = false;
+    this._lavaDmgAcc = 0;
+    this._drownDmgAcc = 0;
+    this._regenAcc = 0;
+    this.onHealthChange = null;
+    this.onAirChange = null;
+    this.onDeath = null;
+    this.onDamage = null;
+
     this._onMouseMove = this._onMouseMove.bind(this);
     this._onKeyDown = this._onKeyDown.bind(this);
     this._onKeyUp = this._onKeyUp.bind(this);
@@ -68,6 +87,55 @@ export class Player {
     if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.running = false;
   }
 
+  // --- Survival API ---
+  setMode(mode) {
+    this.surviveMode = mode === 'survival';
+    if (!this.surviveMode) {
+      this.dead = false;
+      this.health = this.maxHealth;
+      this.airTime = this.maxAir;
+      if (this.onHealthChange) this.onHealthChange(this.health, this.maxHealth);
+      if (this.onAirChange) this.onAirChange(this.airTime, this.maxAir);
+    }
+  }
+
+  takeDamage(amount, cause = '') {
+    if (!this.surviveMode || this.dead || amount <= 0) return;
+    const now = performance.now() / 1000;
+    if (now < this._damageImmuneUntil && cause !== 'lava' && cause !== 'drown') return;
+    this.health = Math.max(0, this.health - amount);
+    this._lastDamageAt = now;
+    this._damageImmuneUntil = now + 0.5;
+    this._regenAcc = 0;
+    if (this.onDamage) this.onDamage(amount, cause);
+    if (this.onHealthChange) this.onHealthChange(this.health, this.maxHealth);
+    if (this.health <= 0) {
+      this.dead = true;
+      this.health = 0;
+      if (this.onDeath) this.onDeath(cause);
+    }
+  }
+
+  heal(amount) {
+    if (!this.surviveMode || this.dead || amount <= 0) return;
+    const next = Math.min(this.maxHealth, this.health + amount);
+    if (next === this.health) return;
+    this.health = next;
+    if (this.onHealthChange) this.onHealthChange(this.health, this.maxHealth);
+  }
+
+  reviveAt(x, y, z) {
+    this.dead = false;
+    this.health = this.maxHealth;
+    this.airTime = this.maxAir;
+    this.position.set(x, y, z);
+    this.velocity.set(0, 0, 0);
+    this._peakY = y;
+    this._wasOnGround = false;
+    if (this.onHealthChange) this.onHealthChange(this.health, this.maxHealth);
+    if (this.onAirChange) this.onAirChange(this.airTime, this.maxAir);
+  }
+
   respawn() {
     // Search around (0,0) in expanding rings for a column whose surface is dry land.
     const findSurface = (x, z) => {
@@ -97,6 +165,16 @@ export class Player {
   }
 
   update(dt) {
+    // If dead, freeze input but keep camera responsive.
+    if (this.dead) {
+      this.velocity.set(0, 0, 0);
+      this.camera.position.set(this.position.x, this.position.y + EYE - HEIGHT / 2, this.position.z);
+      this.camera.rotation.set(0, 0, 0);
+      this.camera.rotateY(this.yaw);
+      this.camera.rotateX(this.pitch);
+      return;
+    }
+
     // Build movement input in local frame (Z=forward, X=right).
     let inputX = 0, inputZ = 0;
     // AZERTY: Z=forward, S=back, Q=left, D=right. Also support WASD.
@@ -167,8 +245,14 @@ export class Player {
     this._moveAxis(0, this.velocity.y * dt, 0);
     this._moveAxis(0, 0, this.velocity.z * dt);
 
-    // Fell out of world -> respawn.
-    if (this.position.y < -20) this.respawn();
+    // Fell out of world.
+    if (this.position.y < -20) {
+      if (this.surviveMode) this.takeDamage(this.maxHealth, 'void');
+      else this.respawn();
+    }
+
+    // --- Survival ticks ---
+    if (this.surviveMode && !this.dead) this._tickSurvival(dt);
 
     // Update camera.
     this.camera.position.set(this.position.x, this.position.y + EYE - HEIGHT / 2, this.position.z);
@@ -224,6 +308,83 @@ export class Player {
       }
     }
     return false;
+  }
+
+  _tickSurvival(dt) {
+    // Fall damage: track peak Y while airborne; on landing, hurt.
+    if (this.onGround) {
+      if (!this._wasOnGround) {
+        const fall = this._peakY - this.position.y;
+        if (fall > 3.5) {
+          const dmg = Math.floor(fall - 3);
+          if (dmg > 0) this.takeDamage(dmg, 'fall');
+        }
+      }
+      this._peakY = this.position.y;
+    } else {
+      if (this.position.y > this._peakY) this._peakY = this.position.y;
+    }
+    this._wasOnGround = this.onGround;
+
+    // Lava damage: head OR feet in lava -> 2 dmg every 0.5s (4/s).
+    const headBlock = this._blockAtEye();
+    const feetBlock = this._blockAtFeet();
+    const inLava = headBlock === BLOCK.LAVA || feetBlock === BLOCK.LAVA;
+    if (inLava) {
+      this._lavaDmgAcc += dt;
+      if (this._lavaDmgAcc >= 0.5) {
+        this._lavaDmgAcc -= 0.5;
+        this.takeDamage(2, 'lava');
+      }
+    } else {
+      this._lavaDmgAcc = 0;
+    }
+
+    // Drowning: head in water -> deplete air, then 2 dmg/sec.
+    if (headBlock === BLOCK.WATER) {
+      this.airTime = Math.max(0, this.airTime - dt);
+      if (this.airTime <= 0) {
+        this._drownDmgAcc += dt;
+        if (this._drownDmgAcc >= 1) {
+          this._drownDmgAcc -= 1;
+          this.takeDamage(2, 'drown');
+        }
+      }
+      if (this.onAirChange) this.onAirChange(this.airTime, this.maxAir);
+    } else {
+      this._drownDmgAcc = 0;
+      if (this.airTime < this.maxAir) {
+        this.airTime = Math.min(this.maxAir, this.airTime + dt * 8);
+        if (this.onAirChange) this.onAirChange(this.airTime, this.maxAir);
+      }
+    }
+
+    // Passive regen: no damage for 4s -> +1 HP every 1.5s.
+    const now = performance.now() / 1000;
+    if (this.health < this.maxHealth && now - this._lastDamageAt > 4) {
+      this._regenAcc += dt;
+      if (this._regenAcc >= 1.5) {
+        this._regenAcc -= 1.5;
+        this.heal(1);
+      }
+    }
+  }
+
+  _blockAtEye() {
+    const eyeY = this.position.y + EYE - HEIGHT / 2;
+    return this.world.getBlock(
+      Math.floor(this.position.x),
+      Math.floor(eyeY),
+      Math.floor(this.position.z),
+    );
+  }
+
+  _blockAtFeet() {
+    return this.world.getBlock(
+      Math.floor(this.position.x),
+      Math.floor(this.position.y - HEIGHT / 2 + 0.05),
+      Math.floor(this.position.z),
+    );
   }
 
   _isInWater() {

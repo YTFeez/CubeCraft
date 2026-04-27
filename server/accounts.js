@@ -165,7 +165,13 @@ function setWorldData(name, roomId, data) {
   const u = db.users[name];
   if (!u) return;
   if (!u.worldData) u.worldData = {};
-  u.worldData[roomId] = data;
+  // Merge so callers can update partial fields without erasing the rest.
+  const prev = u.worldData[roomId] || {};
+  const merged = { ...prev };
+  for (const [k, v] of Object.entries(data || {})) {
+    if (v !== undefined) merged[k] = v;
+  }
+  u.worldData[roomId] = merged;
   scheduleSave();
 }
 

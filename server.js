@@ -384,6 +384,10 @@ wss.on('connection', (ws) => {
         y: typeof saved.y === 'number' ? saved.y : 80,
         z: typeof saved.z === 'number' ? saved.z : 0,
         yaw: saved.yaw || 0, pitch: saved.pitch || 0,
+        slot: saved.slot | 0,
+        inventory: Array.isArray(saved.inventory) ? saved.inventory : null,
+        health: typeof saved.health === 'number' ? saved.health : null,
+        air: typeof saved.air === 'number' ? saved.air : null,
       };
       room.players.set(playerId, player);
 
@@ -394,7 +398,14 @@ wss.on('connection', (ws) => {
         timeOfDay: globalTimeOfDay,
         edits: room.edits,
         spawn: saved.x != null
-          ? { x: saved.x, y: saved.y, z: saved.z, yaw: saved.yaw || 0, pitch: saved.pitch || 0, slot: saved.slot || 0 }
+          ? {
+              x: saved.x, y: saved.y, z: saved.z,
+              yaw: saved.yaw || 0, pitch: saved.pitch || 0,
+              slot: saved.slot || 0,
+              inventory: Array.isArray(saved.inventory) ? saved.inventory : null,
+              health: typeof saved.health === 'number' ? saved.health : null,
+              air: typeof saved.air === 'number' ? saved.air : null,
+            }
           : null,
         players: Array.from(room.players.values())
           .filter(p => p.id !== playerId)
@@ -453,6 +464,22 @@ wss.on('connection', (ws) => {
         if (typeof msg.slot === 'number') me.slot = msg.slot | 0;
         break;
       }
+      case 'inventory': {
+        if (Array.isArray(msg.slots)) {
+          // Sanitize: at most 9 slots, each { id:int>=0, count:int 0..64 }.
+          me.inventory = msg.slots.slice(0, 9).map(s => {
+            if (!s || typeof s.id !== 'number' || s.id < 0) return null;
+            const count = Math.max(0, Math.min(64, s.count | 0));
+            return count > 0 ? { id: s.id | 0, count } : null;
+          });
+        }
+        break;
+      }
+      case 'health': {
+        if (typeof msg.health === 'number') me.health = Math.max(0, Math.min(20, msg.health));
+        if (typeof msg.air === 'number') me.air = Math.max(0, Math.min(15, msg.air));
+        break;
+      }
       case 'chat': {
         const text = (msg.text || '').toString().slice(0, 200);
         if (!text) return;
@@ -479,6 +506,9 @@ wss.on('connection', (ws) => {
         accounts.setWorldData(me.username, room.id, {
           x: me.x, y: me.y, z: me.z, yaw: me.yaw, pitch: me.pitch,
           slot: me.slot | 0,
+          inventory: Array.isArray(me.inventory) ? me.inventory : undefined,
+          health: typeof me.health === 'number' ? me.health : undefined,
+          air: typeof me.air === 'number' ? me.air : undefined,
         });
       }
       room.players.delete(playerId);
@@ -514,6 +544,9 @@ function shutdown() {
       if (p.username) {
         accounts.setWorldData(p.username, r.id, {
           x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, slot: p.slot | 0,
+          inventory: Array.isArray(p.inventory) ? p.inventory : undefined,
+          health: typeof p.health === 'number' ? p.health : undefined,
+          air: typeof p.air === 'number' ? p.air : undefined,
         });
       }
     }

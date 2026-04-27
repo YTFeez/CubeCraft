@@ -37,6 +37,24 @@
 
   <div id="hotbar"></div>
 
+  <!-- Survival HUD: hearts + air -->
+  <div id="survival-hud" class="hidden">
+    <div id="hearts" class="hearts"></div>
+    <div id="air-bar" class="air-bar hidden"><div id="air-fill"></div></div>
+  </div>
+
+  <!-- Damage flash overlay -->
+  <div id="damage-flash"></div>
+
+  <!-- Death overlay -->
+  <div id="death-overlay" class="overlay hidden">
+    <div class="death-panel">
+      <h1>Tu es mort</h1>
+      <p id="death-cause" class="subtitle">…</p>
+      <button id="respawn-btn">Réapparaître</button>
+    </div>
+  </div>
+
   <!-- Auth screen (shown first if no valid token) -->
   <div id="auth" class="overlay hidden">
     <div class="auth-panel">
@@ -102,7 +120,7 @@
         <button id="play-btn">Jouer</button>
         <button id="leave-btn" class="secondary">Quitter le monde</button>
       </div>
-      <p class="hint">Astuce : pose des panneaux en construisant à plusieurs.</p>
+      <p class="hint"><b>Faction</b> et <b>Minage</b> sont en mode survie : casse pour récolter, pose pour consommer, attention aux chutes, à la lave et à la noyade. <b>Événement</b> et <b>Mini-jeux & PvP</b> sont en créatif.</p>
     </div>
   </div>
 
