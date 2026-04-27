@@ -97,4 +97,8 @@ export class Network {
   sendInventory(slots) { this.send({ type: 'inventory', slots }); }
 
   sendHealth(health, air) { this.send({ type: 'health', health, air }); }
+
+  sendDropItem(drop) { this.send({ type: 'dropItem', ...drop }); }
+
+  sendPickup(dropId) { this.send({ type: 'pickup', dropId }); }
 }

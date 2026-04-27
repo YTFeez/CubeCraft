@@ -9,6 +9,7 @@ import { Particles } from './particles.js';
 import { buildClouds, buildStars } from './sky.js';
 import { Network } from './network.js';
 import { RemotePlayers } from './remoteplayers.js';
+import { ItemDrops } from './itemDrops.js';
 import { THEMES, themeById } from './themes.js';
 
 const VIEW_RADIUS = 5;
@@ -51,6 +52,7 @@ const deathOverlay = document.getElementById('death-overlay');
 const deathCause   = document.getElementById('death-cause');
 const respawnBtn   = document.getElementById('respawn-btn');
 const damageFlash  = document.getElementById('damage-flash');
+const deleteAccountBtn = document.getElementById('delete-account-btn');
 
 // =========================================================================
 // SELECTION SCREEN (rendered first so it's always visible)
@@ -173,6 +175,26 @@ function showSelectionScreen() {
 
 logoutBtn.addEventListener('click', async () => {
   if (auth?.token) await postJson('/api/logout', {}, auth.token).catch(() => {});
+  clearAuth();
+  auth = null;
+  showAuthScreen();
+});
+
+deleteAccountBtn?.addEventListener('click', async () => {
+  if (!auth?.token) return;
+  const ok = confirm(
+    `Supprimer définitivement le compte "${auth.name}" ?\n\n` +
+    `Toutes tes constructions, ton inventaire et ta progression dans tous les mondes seront effacés. Cette action est irréversible.`
+  );
+  if (!ok) return;
+  const ok2 = confirm('Es-tu vraiment sûr ? Tape OK pour confirmer la suppression.');
+  if (!ok2) return;
+  try {
+    await fetch('/api/account', {
+      method: 'DELETE',
+      headers: { 'Authorization': 'Bearer ' + auth.token },
+    });
+  } catch {}
   clearAuth();
   auth = null;
   showAuthScreen();
@@ -328,6 +350,7 @@ async function createSession(theme, name) {
   const player = new Player(camera, world, canvas);
   const particles = new Particles(scene, atlasTex);
   const remotePlayers = new RemotePlayers(scene);
+  const itemDrops = new ItemDrops(scene, atlasCanvas);
 
   // === Networking ===
   const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
@@ -356,6 +379,16 @@ async function createSession(theme, name) {
     timeSync: (m) => {
       // Server is authoritative for time-of-day; just trust it.
       if (typeof m.t === 'number' && session) session.timeOfDay = m.t;
+    },
+    itemSpawn: (m) => itemDrops.add(m),
+    itemDespawn: (m) => {
+      // If the local player is the one who picked it up, give them the block.
+      const drop = itemDrops.drops.get(m.dropId);
+      if (drop && m.by === network.you?.id && session) {
+        session.interaction.addBlock(drop.blockId, 1);
+        if (session.isSurvival) session.invDirty = true;
+      }
+      itemDrops.remove(m.dropId);
     },
     chat: (m) => addChatLine(m.from, m.text, m.color),
     system: (m) => addSystemLine(m.text, m.color || '#9aa5b1'),
@@ -396,6 +429,7 @@ async function createSession(theme, name) {
     knownPlayers.set(p.id, { name: p.name, color: p.color });
     remotePlayers.add(p);
   }
+  for (const d of welcome.drops || []) itemDrops.add(d);
   knownPlayers.set(network.you.id, { name: network.you.name, color: network.you.color, self: true });
   refreshPlayersList();
 
@@ -445,14 +479,15 @@ async function createSession(theme, name) {
       network.sendEdit(cx, cz, lx, y, lz, id);
     },
     onSlot: (slot) => network.sendSlot(slot),
-    onInventoryChange: () => { if (isSurvival) invDirty = true; },
+    onInventoryChange: () => { invDirty = true; },
+    onDropItem: (drop) => network.sendDropItem(drop),
   });
 
   const session = {
     theme, scene, world, player, audio, particles, interaction,
     sky, skyU, sun, hemi, ambient, stars, clouds,
     opaqueMat, transparentMat, waterMat, waterTime,
-    network, remotePlayers, knownPlayers,
+    network, remotePlayers, knownPlayers, itemDrops,
     timeOfDay: welcome.timeOfDay ?? 0.3,
     spawn: welcome.spawn || null,
     refreshPlayersList,
@@ -622,10 +657,13 @@ async function initialGenerate(s) {
 
 function leaveSession() {
   if (!session) return;
+  // Always flush inventory before disconnecting so creative hotbar arrangement
+  // is persisted too, not only survival inventories.
+  try { session.network.sendInventory(session.interaction.exportInventory()); } catch {}
   if (session.isSurvival) {
-    try { session.network.sendInventory(session.interaction.exportInventory()); } catch {}
     try { session.network.sendHealth(session.player.health, session.player.airTime); } catch {}
   }
+  try { session.itemDrops?.clear(); } catch {}
   try { session.network.disconnect(); } catch {}
   try { session.player.destroy?.(); } catch {}
   survivalHud.classList.add('hidden');
@@ -801,9 +839,12 @@ leaveBtn.addEventListener('click', () => {
 
 document.addEventListener('pointerlockchange', () => {
   if (!session) return;
+  const inventoryEl = document.getElementById('inventory');
+  const inventoryOpen = inventoryEl && !inventoryEl.classList.contains('hidden');
   if (!document.pointerLockElement
       && !chatInput.classList.contains('visible')
-      && deathOverlay.classList.contains('hidden')) {
+      && deathOverlay.classList.contains('hidden')
+      && !inventoryOpen) {
     menu.classList.remove('hidden');
   }
 });
@@ -856,6 +897,11 @@ function animate() {
   s.interaction.updateHighlight();
   s.particles.update(dt);
   s.remotePlayers.update(dt);
+  if (s.player.locked && !s.player.dead) {
+    s.itemDrops.update(dt, s.world, s.player, s.network.you?.id, (dropId) => s.network.sendPickup(dropId));
+  } else {
+    s.itemDrops.update(dt, s.world, s.player, -1, null);
+  }
 
   // Sky/clouds/stars follow camera
   s.sky.position.set(camera.position.x, 0, camera.position.z);
@@ -887,15 +933,16 @@ function animate() {
   // === Networking heartbeat ===
   s.network.sendPos(s.player.position.x, s.player.position.y, s.player.position.z, s.player.yaw, s.player.pitch);
 
-  // Survival state sync (debounced).
-  if (s.isSurvival) {
+  // Inventory sync runs in both modes (creative persists the hotbar
+  // arrangement; survival persists the actual stacks).
+  {
     const nowMs = performance.now();
     if (s.invDirty && nowMs - s.lastInvSent > 1500) {
       s.network.sendInventory(s.interaction.exportInventory());
       s.lastInvSent = nowMs;
       s.invDirty = false;
     }
-    if (s._healthDirty && s._healthDirty() && nowMs - (s._lastHealthSent || 0) > 800) {
+    if (s.isSurvival && s._healthDirty && s._healthDirty() && nowMs - (s._lastHealthSent || 0) > 800) {
       s.network.sendHealth(s.player.health, s.player.airTime);
       s._clearHealthDirty();
       s._lastHealthSent = nowMs;

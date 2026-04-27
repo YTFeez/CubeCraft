@@ -3,6 +3,8 @@ import { BLOCK, HOTBAR_BLOCKS, BLOCK_INFO, isSolid, isFluidSource, blockIconData
 
 const REACH = 6;
 const HOTBAR_SIZE = 9;
+const MAIN_SIZE = 27;
+const INV_SIZE = HOTBAR_SIZE + MAIN_SIZE; // 36 slots: 0..8 hotbar, 9..35 main
 const STACK_MAX = 64;
 
 // Blocks the player cannot pick up when broken (fluids included so we never
@@ -11,8 +13,17 @@ const NO_DROP = new Set([
   BLOCK.BEDROCK, BLOCK.WATER, BLOCK.LAVA, BLOCK.WATER_FLOW, BLOCK.LAVA_FLOW,
 ]);
 
+// Blocks shown in the creative palette inside the inventory overlay (creative
+// mode only). Sources/flowing fluids and bedrock are hidden because the player
+// cannot place them anyway.
+const CREATIVE_PALETTE = [
+  BLOCK.GRASS, BLOCK.DIRT, BLOCK.STONE, BLOCK.SAND,
+  BLOCK.WOOD, BLOCK.PLANKS, BLOCK.LEAVES, BLOCK.GLASS,
+  BLOCK.SNOW, BLOCK.ICE, BLOCK.CACTUS, BLOCK.OBSIDIAN,
+];
+
 export class Interaction {
-  constructor({ camera, world, player, scene, atlasCanvas, audio, onChange, onBreak, onEdit, onSlot, onInventoryChange, hotbar, initialSlot, mode, initialInventory }) {
+  constructor({ camera, world, player, scene, atlasCanvas, audio, onChange, onBreak, onEdit, onSlot, onInventoryChange, onDropItem, hotbar, initialSlot, mode, initialInventory }) {
     this.camera = camera;
     this.world = world;
     this.player = player;
@@ -24,35 +35,46 @@ export class Interaction {
     this.onEdit = onEdit;
     this.onSlot = onSlot;
     this.onInventoryChange = onInventoryChange;
+    this.onDropItem = onDropItem;
     this.mode = mode === 'survival' ? 'survival' : 'creative';
     this._defaultHotbar = (hotbar && hotbar.length ? hotbar : HOTBAR_BLOCKS).slice(0, HOTBAR_SIZE);
 
-    // Build slots: [{ id, count } | null]
     this.slots = this._buildInitialSlots(initialInventory);
     this.selectedIndex = Math.max(0, Math.min(HOTBAR_SIZE - 1, initialSlot | 0));
+
+    // Slot held by the cursor while the inventory overlay is open.
+    this.carried = null; // { id, count } | null
+    this.invOpen = false;
 
     this.raycaster = new THREE.Raycaster();
     this.raycaster.far = REACH;
 
     this._buildHotbarDOM();
+    this._buildInventoryDOM();
     this._buildHighlight();
 
     window.addEventListener('wheel', e => this._onWheel(e), { passive: true });
     window.addEventListener('keydown', e => this._onKeyDown(e));
     window.addEventListener('mousedown', e => this._onMouseDown(e));
+    window.addEventListener('mousemove', e => this._onMouseMove(e));
   }
 
   _buildInitialSlots(saved) {
-    const slots = new Array(HOTBAR_SIZE).fill(null);
+    const slots = new Array(INV_SIZE).fill(null);
     if (this.mode === 'creative') {
+      // In creative the hotbar is pre-filled with the theme's defaults; the
+      // main inventory stays empty (the creative palette gives unlimited stacks
+      // on demand).
       this._defaultHotbar.forEach((id, i) => {
         if (i < HOTBAR_SIZE) slots[i] = { id, count: Infinity };
       });
       return slots;
     }
-    // Survival: restore from saved snapshot if available.
+    // Survival: restore from saved snapshot if available. Backwards compatible
+    // with old 9-slot saves (they fill the hotbar only).
     if (Array.isArray(saved)) {
-      for (let i = 0; i < HOTBAR_SIZE; i++) {
+      const n = Math.min(saved.length, INV_SIZE);
+      for (let i = 0; i < n; i++) {
         const s = saved[i];
         if (s && typeof s.id === 'number' && s.id !== BLOCK.AIR && (s.count | 0) > 0) {
           slots[i] = { id: s.id, count: Math.min(STACK_MAX, s.count | 0) };
@@ -66,6 +88,9 @@ export class Interaction {
     return this.slots.map(s => (s ? { id: s.id, count: isFinite(s.count) ? s.count : 0 } : null));
   }
 
+  // ---------------------------------------------------------------------------
+  // Hotbar (always visible, shows slots 0..8)
+  // ---------------------------------------------------------------------------
   _buildHotbarDOM() {
     const bar = document.getElementById('hotbar');
     bar.innerHTML = '';
@@ -114,6 +139,309 @@ export class Interaction {
     });
   }
 
+  // ---------------------------------------------------------------------------
+  // Full inventory overlay (E to toggle)
+  // ---------------------------------------------------------------------------
+  _buildInventoryDOM() {
+    let overlay = document.getElementById('inventory');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'inventory';
+      overlay.className = 'overlay hidden inventory-overlay';
+      overlay.innerHTML = `
+        <div class="inv-panel">
+          <h2>Inventaire</h2>
+          <div class="inv-grid" id="inv-main"></div>
+          <div class="inv-sep"></div>
+          <div class="inv-hotbar" id="inv-hotbar"></div>
+          <div class="inv-palette-wrap hidden" id="inv-palette-wrap">
+            <div class="inv-palette-title">Palette créative — clic pour prendre un stack de 64</div>
+            <div class="inv-palette" id="inv-palette"></div>
+          </div>
+          <p class="hint">E ou Échap pour fermer · Clic gauche : prendre/déposer le stack · Clic droit : déposer 1 / prendre la moitié · Maj+clic : auto-rangement entre hotbar et inventaire principal</p>
+        </div>
+        <div class="inv-cursor" id="inv-cursor"></div>
+      `;
+      document.body.appendChild(overlay);
+    }
+    this._invOverlayEl = overlay;
+    this._invMainEl = overlay.querySelector('#inv-main');
+    this._invHotbarEl = overlay.querySelector('#inv-hotbar');
+    this._invPaletteWrap = overlay.querySelector('#inv-palette-wrap');
+    this._invPaletteEl = overlay.querySelector('#inv-palette');
+    this._invCursorEl = overlay.querySelector('#inv-cursor');
+
+    // Build empty slot grid (main 27 then hotbar 9). We render hotbar twice:
+    // the bottom row of the inventory grid mirrors the live hotbar so the
+    // player can drag stacks onto specific number keys.
+    this._invMainEl.innerHTML = '';
+    for (let i = HOTBAR_SIZE; i < INV_SIZE; i++) {
+      this._invMainEl.appendChild(this._buildInvSlotEl(i));
+    }
+    this._invHotbarEl.innerHTML = '';
+    for (let i = 0; i < HOTBAR_SIZE; i++) {
+      this._invHotbarEl.appendChild(this._buildInvSlotEl(i));
+    }
+
+    // Creative palette (only visible in creative mode).
+    this._invPaletteEl.innerHTML = '';
+    if (this.mode === 'creative') {
+      this._invPaletteWrap.classList.remove('hidden');
+      for (const id of CREATIVE_PALETTE) {
+        const tile = document.createElement('div');
+        tile.className = 'inv-slot palette-slot';
+        tile.title = BLOCK_INFO[id]?.name || '';
+        const icon = document.createElement('div');
+        icon.className = 'inv-icon';
+        icon.style.backgroundImage = `url(${blockIconDataURL(id, this.atlasCanvas)})`;
+        icon.style.backgroundSize = 'cover';
+        tile.appendChild(icon);
+        tile.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          // Always replace the carried stack with a fresh creative stack.
+          this.carried = { id, count: 64 };
+          this._refreshInventoryDOM();
+        });
+        this._invPaletteEl.appendChild(tile);
+      }
+    } else {
+      this._invPaletteWrap.classList.add('hidden');
+    }
+
+    // Click outside the panel: drop the carried stack back into the world.
+    overlay.addEventListener('mousedown', (e) => {
+      if (e.target === overlay) {
+        // Click on the dim background only — discard carried back to inventory
+        // by trying to auto-place it in the first available slot.
+        if (this.carried) {
+          this._autoStow(this.carried);
+          this.carried = null;
+          this._refreshInventoryDOM();
+        }
+      }
+    });
+  }
+
+  _buildInvSlotEl(globalIdx) {
+    const el = document.createElement('div');
+    el.className = 'inv-slot';
+    el.dataset.idx = globalIdx;
+    const icon = document.createElement('div');
+    icon.className = 'inv-icon';
+    const count = document.createElement('div');
+    count.className = 'inv-count';
+    el.appendChild(icon);
+    el.appendChild(count);
+    if (globalIdx < HOTBAR_SIZE) el.classList.add('hotbar-slot');
+    el.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      this._onInvSlotMouseDown(globalIdx, e);
+    });
+    return el;
+  }
+
+  _refreshInventoryDOM() {
+    if (!this._invOverlayEl) return;
+    const els = this._invOverlayEl.querySelectorAll('.inv-slot[data-idx]');
+    els.forEach(el => {
+      const i = +el.dataset.idx;
+      const s = this.slots[i];
+      const icon = el.querySelector('.inv-icon');
+      const count = el.querySelector('.inv-count');
+      if (s) {
+        icon.style.backgroundImage = `url(${blockIconDataURL(s.id, this.atlasCanvas)})`;
+        icon.style.backgroundSize = 'cover';
+        el.title = BLOCK_INFO[s.id]?.name || '';
+        if (isFinite(s.count) && s.count > 1) count.textContent = s.count;
+        else if (!isFinite(s.count)) count.textContent = '∞';
+        else count.textContent = '';
+      } else {
+        icon.style.backgroundImage = 'none';
+        el.title = '';
+        count.textContent = '';
+      }
+      el.classList.toggle('empty', !s);
+    });
+    // Carried preview.
+    if (this.carried) {
+      this._invCursorEl.style.backgroundImage = `url(${blockIconDataURL(this.carried.id, this.atlasCanvas)})`;
+      this._invCursorEl.dataset.count = isFinite(this.carried.count)
+        ? (this.carried.count > 1 ? this.carried.count : '')
+        : '∞';
+      this._invCursorEl.classList.add('visible');
+    } else {
+      this._invCursorEl.classList.remove('visible');
+    }
+  }
+
+  openInventory() {
+    if (this.invOpen) return;
+    this.invOpen = true;
+    this._invOverlayEl.classList.remove('hidden');
+    this._refreshInventoryDOM();
+    if (document.pointerLockElement) document.exitPointerLock();
+  }
+
+  closeInventory() {
+    if (!this.invOpen) return;
+    this.invOpen = false;
+    this._invOverlayEl.classList.add('hidden');
+    // If the cursor is still holding a stack, try to auto-stow it. In creative
+    // mode an unplaced stack just disappears (it's free anyway).
+    if (this.carried) {
+      if (this.mode === 'creative') {
+        this.carried = null;
+      } else {
+        const left = this._autoStow(this.carried);
+        this.carried = left.count > 0 ? left : null;
+      }
+    }
+    this._refreshInventoryDOM();
+    this._refreshHotbarDOM();
+    if (this.onInventoryChange) this.onInventoryChange();
+  }
+
+  _onMouseMove(e) {
+    if (!this.invOpen || !this._invCursorEl) return;
+    this._invCursorEl.style.left = e.clientX + 'px';
+    this._invCursorEl.style.top = e.clientY + 'px';
+  }
+
+  // Click handling inside the inventory grid.
+  _onInvSlotMouseDown(i, e) {
+    const s = this.slots[i];
+    const carried = this.carried;
+    const isLeft = e.button === 0;
+    const isRight = e.button === 2;
+    const shift = e.shiftKey;
+
+    if (shift && s) {
+      // Auto-shuttle between hotbar and main inventory.
+      this._shiftClickTransfer(i);
+      this._refreshInventoryDOM();
+      this._refreshHotbarDOM();
+      if (this.onInventoryChange) this.onInventoryChange();
+      return;
+    }
+
+    if (isLeft) {
+      if (!carried) {
+        // Pick up the entire stack.
+        if (s) {
+          // Creative infinite stacks become finite on extraction so the player
+          // can place them back without confusion.
+          this.carried = isFinite(s.count) ? { id: s.id, count: s.count } : { id: s.id, count: 64 };
+          this.slots[i] = null;
+        }
+      } else {
+        if (!s) {
+          this.slots[i] = carried;
+          this.carried = null;
+        } else if (s.id === carried.id && isFinite(s.count) && isFinite(carried.count)) {
+          // Stack into existing.
+          const room = STACK_MAX - s.count;
+          const add = Math.min(room, carried.count);
+          s.count += add;
+          carried.count -= add;
+          if (carried.count <= 0) this.carried = null;
+        } else {
+          // Swap.
+          this.slots[i] = carried;
+          this.carried = s;
+        }
+      }
+    } else if (isRight) {
+      if (carried) {
+        // Place 1 unit.
+        if (!s) {
+          this.slots[i] = { id: carried.id, count: 1 };
+          if (isFinite(carried.count)) carried.count -= 1;
+          if (isFinite(carried.count) && carried.count <= 0) this.carried = null;
+        } else if (s.id === carried.id && isFinite(s.count) && s.count < STACK_MAX) {
+          s.count += 1;
+          if (isFinite(carried.count)) carried.count -= 1;
+          if (isFinite(carried.count) && carried.count <= 0) this.carried = null;
+        }
+      } else if (s && isFinite(s.count) && s.count > 1) {
+        // Take half.
+        const half = Math.ceil(s.count / 2);
+        this.carried = { id: s.id, count: half };
+        s.count -= half;
+        if (s.count <= 0) this.slots[i] = null;
+      } else if (s && isFinite(s.count) && s.count === 1) {
+        this.carried = { id: s.id, count: 1 };
+        this.slots[i] = null;
+      } else if (s && !isFinite(s.count)) {
+        // Creative infinite stack: take 64 in hand without depleting source.
+        this.carried = { id: s.id, count: 64 };
+      }
+    }
+
+    this._refreshInventoryDOM();
+    this._refreshHotbarDOM();
+    if (this.onInventoryChange) this.onInventoryChange();
+  }
+
+  // Move a stack between hotbar (0..8) and main (9..35) when shift-clicked.
+  _shiftClickTransfer(i) {
+    const from = this.slots[i];
+    if (!from) return;
+    const inHotbar = i < HOTBAR_SIZE;
+    const range = inHotbar ? [HOTBAR_SIZE, INV_SIZE] : [0, HOTBAR_SIZE];
+    let remaining = isFinite(from.count) ? from.count : 64;
+    const finite = isFinite(from.count);
+    // First fill matching stacks.
+    for (let j = range[0]; j < range[1] && remaining > 0; j++) {
+      const t = this.slots[j];
+      if (t && t.id === from.id && isFinite(t.count) && t.count < STACK_MAX) {
+        const room = STACK_MAX - t.count;
+        const add = Math.min(room, remaining);
+        t.count += add;
+        remaining -= add;
+      }
+    }
+    // Then put in first empty slot.
+    for (let j = range[0]; j < range[1] && remaining > 0; j++) {
+      if (!this.slots[j]) {
+        const add = Math.min(STACK_MAX, remaining);
+        this.slots[j] = { id: from.id, count: add };
+        remaining -= add;
+      }
+    }
+    if (finite) {
+      from.count = remaining;
+      if (from.count <= 0) this.slots[i] = null;
+    }
+    // Infinite (creative) stays untouched.
+  }
+
+  // Try to merge a stack back into the inventory; returns the leftover stack
+  // (count > 0 means it didn't fully fit).
+  _autoStow(stack) {
+    if (!stack || !isFinite(stack.count)) return { id: stack?.id, count: 0 };
+    let remaining = stack.count;
+    for (let i = 0; i < INV_SIZE && remaining > 0; i++) {
+      const t = this.slots[i];
+      if (t && t.id === stack.id && isFinite(t.count) && t.count < STACK_MAX) {
+        const room = STACK_MAX - t.count;
+        const add = Math.min(room, remaining);
+        t.count += add;
+        remaining -= add;
+      }
+    }
+    for (let i = 0; i < INV_SIZE && remaining > 0; i++) {
+      if (!this.slots[i]) {
+        const add = Math.min(STACK_MAX, remaining);
+        this.slots[i] = { id: stack.id, count: add };
+        remaining -= add;
+      }
+    }
+    return { id: stack.id, count: remaining };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Highlight + selection
+  // ---------------------------------------------------------------------------
   _buildHighlight() {
     const geo = new THREE.BoxGeometry(1.002, 1.002, 1.002);
     const edges = new THREE.EdgesGeometry(geo);
@@ -136,11 +464,14 @@ export class Interaction {
     return s && s.count > 0 ? s.id : null;
   }
 
-  // Add `qty` of blockId to inventory; returns true if all units were stored.
+  // ---------------------------------------------------------------------------
+  // Add / consume blocks (used by mining, picking up dropped items, etc.)
+  // ---------------------------------------------------------------------------
   addBlock(id, qty = 1) {
     if (NO_DROP.has(id) || qty <= 0) return false;
     let remaining = qty;
-    for (let i = 0; i < HOTBAR_SIZE && remaining > 0; i++) {
+    // Try existing matching stacks (hotbar first, then main).
+    for (let i = 0; i < INV_SIZE && remaining > 0; i++) {
       const s = this.slots[i];
       if (s && s.id === id && isFinite(s.count) && s.count < STACK_MAX) {
         const room = STACK_MAX - s.count;
@@ -149,7 +480,8 @@ export class Interaction {
         remaining -= add;
       }
     }
-    for (let i = 0; i < HOTBAR_SIZE && remaining > 0; i++) {
+    // Then any empty slot (hotbar first, then main).
+    for (let i = 0; i < INV_SIZE && remaining > 0; i++) {
       if (!this.slots[i]) {
         const add = Math.min(STACK_MAX, remaining);
         this.slots[i] = { id, count: add };
@@ -157,6 +489,7 @@ export class Interaction {
       }
     }
     this._refreshHotbarDOM();
+    this._refreshInventoryDOM();
     if (this.onInventoryChange) this.onInventoryChange();
     return remaining === 0;
   }
@@ -164,33 +497,90 @@ export class Interaction {
   _consumeSelected() {
     const s = this.slots[this.selectedIndex];
     if (!s || s.count <= 0) return false;
-    if (!isFinite(s.count)) return true; // creative: infinite
+    if (!isFinite(s.count)) return true;
     s.count -= 1;
     if (s.count <= 0) this.slots[this.selectedIndex] = null;
     this._refreshHotbarDOM();
+    this._refreshInventoryDOM();
     if (this.onInventoryChange) this.onInventoryChange();
     return true;
+  }
+
+  // Drop the selected hotbar item: removes 1 unit and forwards spawn info to
+  // the network handler. Returns the dropped block id (or null).
+  dropSelected() {
+    const s = this.slots[this.selectedIndex];
+    if (!s || s.count <= 0) return null;
+    const id = s.id;
+    if (isFinite(s.count)) {
+      s.count -= 1;
+      if (s.count <= 0) this.slots[this.selectedIndex] = null;
+    }
+    this._refreshHotbarDOM();
+    this._refreshInventoryDOM();
+    if (this.onInventoryChange) this.onInventoryChange();
+    return id;
   }
 
   setMode(mode, inventory) {
     this.mode = mode === 'survival' ? 'survival' : 'creative';
     this.slots = this._buildInitialSlots(inventory);
     this._refreshHotbarDOM();
+    // Rebuild the inventory DOM in case the palette visibility changed.
+    if (this._invOverlayEl) {
+      this._invOverlayEl.remove();
+      this._invOverlayEl = null;
+      this._buildInventoryDOM();
+    }
   }
 
+  // ---------------------------------------------------------------------------
+  // Input
+  // ---------------------------------------------------------------------------
   _onWheel(e) {
+    if (this.invOpen) return;
     const dir = Math.sign(e.deltaY);
     this.select(this.selectedIndex + dir);
   }
 
   _onKeyDown(e) {
+    // E toggles the inventory overlay (unless typing in chat etc.).
+    if (e.code === 'KeyE' && !e.repeat) {
+      // Don't intercept when an input is focused (chat).
+      if (document.activeElement && ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+      e.preventDefault();
+      if (this.invOpen) this.closeInventory();
+      else this.openInventory();
+      return;
+    }
+    if (this.invOpen && e.code === 'Escape') {
+      e.preventDefault();
+      this.closeInventory();
+      return;
+    }
+    if (this.invOpen) return; // most other keys disabled while inventory open
     if (e.code.startsWith('Digit')) {
       const n = parseInt(e.code.slice(5), 10);
       if (n >= 1 && n <= HOTBAR_SIZE) this.select(n - 1);
     }
+    if (e.code === 'KeyG' && !e.repeat) {
+      // Drop the currently selected hotbar item.
+      if (!this.player.locked || this.player.dead) return;
+      const id = this.dropSelected();
+      if (id != null && this.onDropItem) {
+        // Spawn position 0.4m in front of the camera, with a little upward arc.
+        const fwd = new THREE.Vector3();
+        this.camera.getWorldDirection(fwd);
+        const pos = this.camera.getWorldPosition(new THREE.Vector3()).addScaledVector(fwd, 0.6);
+        const vel = fwd.clone().multiplyScalar(5);
+        vel.y += 2.5;
+        this.onDropItem({ x: pos.x, y: pos.y, z: pos.z, vx: vel.x, vy: vel.y, vz: vel.z, blockId: id });
+      }
+    }
   }
 
   _onMouseDown(e) {
+    if (this.invOpen) return; // click handling is per-slot inside the overlay
     if (!this.player.locked) return;
     if (this.player.dead) return;
     const hit = this._raycast();
@@ -199,9 +589,6 @@ export class Interaction {
     if (e.button === 0) {
       const { x, y, z, id } = hit.block;
       if (id === BLOCK.BEDROCK) return;
-      // Fluids are protected: you cannot break them directly. To remove a
-      // source, you must seal its 6 neighbours (= "boucher la source"); the
-      // flow dries up by itself.
       if (BLOCK_INFO[id]?.fluid) return;
       this.world.setBlock(x, y, z, BLOCK.AIR);
       this.audio?.playBreak(id);
@@ -217,8 +604,6 @@ export class Interaction {
       const ny = hit.block.y + hit.normal.y;
       const nz = hit.block.z + hit.normal.z;
       if (this._blockIntersectsPlayer(nx, ny, nz)) return;
-      // Cannot place a block where a fluid source already is — the source has
-      // to be sealed by surrounding it, not overwritten.
       if (isFluidSource(this.world.getBlock(nx, ny, nz))) return;
       if (!this._consumeSelected()) return;
       this.world.setBlock(nx, ny, nz, id);
@@ -229,9 +614,6 @@ export class Interaction {
     }
   }
 
-  // Trigger a localised fluid recompute around a block change. The world
-  // emits each resulting block update through onChange so we can broadcast
-  // them as regular edits — only the originating client runs the simulation.
   _propagateFluids(x, y, z) {
     this.world.recomputeFluidsAround(x, y, z, {
       radius: 6,

@@ -63,6 +63,8 @@ function loadRoom(roomDef) {
     ...roomDef,
     edits,             // { "cx,cz": { "lx,ly,lz": blockId, ... }, ... }
     players: new Map(),// id -> { ws, name, x, y, z, yaw, pitch, color }
+    drops: new Map(),  // dropId -> { x, y, z, vx, vy, vz, blockId, ownerId, t }
+    nextDropId: 1,
     dirty: false,
   };
 }
@@ -86,9 +88,42 @@ function saveGlobalTime() {
 }
 
 setInterval(() => {
-  for (const r of rooms.values()) saveRoom(r);
+  for (const r of rooms.values()) {
+    saveRoom(r);
+    // Periodic per-player save: snapshot every connected player so a crash or
+    // a brutal disconnect doesn't lose progress (position, health, inventory…).
+    for (const p of r.players.values()) {
+      if (!p.username) continue;
+      accounts.setWorldData(p.username, r.id, {
+        x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, slot: p.slot | 0,
+        inventory: Array.isArray(p.inventory) ? p.inventory : undefined,
+        health: typeof p.health === 'number' ? p.health : undefined,
+        air: typeof p.air === 'number' ? p.air : undefined,
+      });
+    }
+  }
   saveGlobalTime();
 }, SAVE_INTERVAL_MS);
+
+// --- Item drops housekeeping ---
+const DROP_LIFETIME_S = 300;
+function roomBroadcast(room, obj) {
+  const text = JSON.stringify(obj);
+  for (const p of room.players.values()) {
+    if (p.ws.readyState === p.ws.OPEN) p.ws.send(text);
+  }
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const r of rooms.values()) {
+    for (const [id, d] of r.drops) {
+      if (now - d.spawnedAt > DROP_LIFETIME_S * 1000) {
+        r.drops.delete(id);
+        roomBroadcast(r, { type: 'itemDespawn', dropId: id });
+      }
+    }
+  }
+}, 5000);
 
 // Server-driven clock: tick once per second, broadcast to everyone every 5s.
 const TIME_TICK_MS = 1000;
@@ -129,6 +164,28 @@ app.get('/api/me', (req, res) => {
   const u = accounts.getUserByToken(token);
   if (!u) return res.status(401).json({ error: 'Token invalide' });
   res.json({ name: u.name, createdAt: u.createdAt });
+});
+
+// Permanently delete the calling user. Drops them from every room they may
+// be connected to, then wipes their account data.
+app.delete('/api/account', (req, res) => {
+  const auth = req.headers.authorization || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  const u = accounts.getUserByToken(token);
+  if (!u) return res.status(401).json({ error: 'Token invalide' });
+  const username = u.name;
+  // Kick out of every room.
+  for (const r of rooms.values()) {
+    for (const [pid, p] of r.players) {
+      if (p.username === username) {
+        try { p.ws.close(); } catch {}
+        r.players.delete(pid);
+        roomBroadcast(r, { type: 'playerLeave', id: pid });
+      }
+    }
+  }
+  accounts.deleteAccount(username);
+  res.json({ ok: true });
 });
 
 app.use(express.static(__dirname, {
@@ -391,12 +448,25 @@ wss.on('connection', (ws) => {
       };
       room.players.set(playerId, player);
 
+      // Snapshot all currently-active drops so the joining client can render
+      // them immediately. Ages are computed from spawnedAt.
+      const nowT = Date.now();
+      const dropsSnapshot = Array.from(room.drops.values()).map(d => ({
+        dropId: d.dropId,
+        x: d.x, y: d.y, z: d.z,
+        vx: 0, vy: 0, vz: 0, // freeze on spawn for late joiners
+        blockId: d.blockId,
+        ownerId: d.ownerId,
+        t: (nowT - d.spawnedAt) / 1000,
+      }));
+
       send({
         type: 'welcome',
         you: { id: playerId, name, color },
         room: { id: room.id, name: room.name, seed: room.seed },
         timeOfDay: globalTimeOfDay,
         edits: room.edits,
+        drops: dropsSnapshot,
         spawn: saved.x != null
           ? {
               x: saved.x, y: saved.y, z: saved.z,
@@ -466,13 +536,53 @@ wss.on('connection', (ws) => {
       }
       case 'inventory': {
         if (Array.isArray(msg.slots)) {
-          // Sanitize: at most 9 slots, each { id:int>=0, count:int 0..64 }.
-          me.inventory = msg.slots.slice(0, 9).map(s => {
+          // Sanitize: up to 36 slots (9 hotbar + 27 main), each { id:int>=0,
+          // count:int 0..64 }. Older clients only send 9; that's still fine.
+          me.inventory = msg.slots.slice(0, 36).map(s => {
             if (!s || typeof s.id !== 'number' || s.id < 0) return null;
             const count = Math.max(0, Math.min(64, s.count | 0));
             return count > 0 ? { id: s.id | 0, count } : null;
           });
         }
+        break;
+      }
+      case 'dropItem': {
+        // Spawn a new item drop visible to everyone in the room. We trust the
+        // client's spawn position (it's guarded by the local raycast/inventory
+        // logic) but cap the velocity so a malicious client can't fling drops
+        // across the world.
+        if (typeof msg.blockId !== 'number') return;
+        const cap = (v, m) => Math.max(-m, Math.min(m, +v || 0));
+        const dropId = room.nextDropId++;
+        const drop = {
+          dropId,
+          x: +msg.x || me.x,
+          y: +msg.y || me.y,
+          z: +msg.z || me.z,
+          vx: cap(msg.vx, 8),
+          vy: cap(msg.vy, 8),
+          vz: cap(msg.vz, 8),
+          blockId: msg.blockId | 0,
+          ownerId: playerId,
+          spawnedAt: Date.now(),
+        };
+        room.drops.set(dropId, drop);
+        roomBroadcast(room, {
+          type: 'itemSpawn',
+          dropId, x: drop.x, y: drop.y, z: drop.z,
+          vx: drop.vx, vy: drop.vy, vz: drop.vz,
+          blockId: drop.blockId, ownerId: drop.ownerId, t: 0,
+        });
+        break;
+      }
+      case 'pickup': {
+        const dropId = msg.dropId | 0;
+        const drop = room.drops.get(dropId);
+        if (!drop) return;
+        // 0.6s grace period for the dropper to walk away from their own item.
+        if (drop.ownerId === playerId && (Date.now() - drop.spawnedAt) < 600) return;
+        room.drops.delete(dropId);
+        roomBroadcast(room, { type: 'itemDespawn', dropId, by: playerId });
         break;
       }
       case 'health': {

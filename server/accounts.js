@@ -161,6 +161,13 @@ function getWorldData(name, roomId) {
   return u.worldData[roomId] || null;
 }
 
+function deleteAccount(name) {
+  if (!db.users[name]) return false;
+  delete db.users[name];
+  scheduleSave();
+  return true;
+}
+
 function setWorldData(name, roomId, data) {
   const u = db.users[name];
   if (!u) return;
@@ -184,5 +191,6 @@ module.exports = {
   getUserByToken,
   getWorldData,
   setWorldData,
+  deleteAccount,
   saveSync,
 };

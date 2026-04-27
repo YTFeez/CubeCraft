@@ -644,3 +644,167 @@ button.small {
   background: linear-gradient(90deg, #6ec6ff, #7fd87f);
   transition: width 0.12s linear;
 }
+
+
+/* ===== Inventory overlay ===== */
+.inventory-overlay {
+  cursor: default;
+  background: rgba(8, 12, 24, 0.55);
+  backdrop-filter: blur(2px);
+}
+
+.inv-panel {
+  background: rgba(20, 22, 28, 0.94);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 14px;
+  padding: 22px 26px 18px;
+  width: min(560px, 90vw);
+  box-shadow: 0 25px 60px rgba(0,0,0,0.5);
+  text-align: center;
+}
+
+.inv-panel h2 {
+  font-size: 20px;
+  margin-bottom: 14px;
+  letter-spacing: 1px;
+  opacity: 0.9;
+}
+
+.inv-grid {
+  display: grid;
+  grid-template-columns: repeat(9, 50px);
+  gap: 4px;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+.inv-hotbar {
+  display: grid;
+  grid-template-columns: repeat(9, 50px);
+  gap: 4px;
+  justify-content: center;
+  margin-top: 6px;
+}
+
+.inv-sep {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  margin: 6px 0;
+}
+
+.inv-slot {
+  width: 50px;
+  height: 50px;
+  background: rgba(0,0,0,0.45);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 4px;
+  position: relative;
+  cursor: pointer;
+  transition: border-color 0.08s ease, transform 0.06s ease;
+}
+
+.inv-slot:hover {
+  border-color: rgba(255,255,255,0.35);
+  transform: scale(1.04);
+}
+
+.inv-slot.empty .inv-icon {
+  background: rgba(255,255,255,0.04);
+}
+
+.inv-slot.hotbar-slot {
+  border-color: rgba(126, 198, 255, 0.4);
+}
+
+.inv-icon {
+  position: absolute;
+  inset: 6px;
+  background-size: cover;
+  image-rendering: pixelated;
+  border-radius: 2px;
+  box-shadow: inset 0 -4px rgba(0,0,0,0.3), inset 0 4px rgba(255,255,255,0.15);
+}
+
+.inv-count {
+  position: absolute;
+  bottom: 1px;
+  right: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000;
+  pointer-events: none;
+}
+
+.inv-palette-wrap {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(255,255,255,0.15);
+}
+
+.inv-palette-title {
+  font-size: 12px;
+  opacity: 0.7;
+  margin-bottom: 6px;
+}
+
+.inv-palette {
+  display: grid;
+  grid-template-columns: repeat(9, 44px);
+  gap: 4px;
+  justify-content: center;
+}
+
+.inv-palette .palette-slot {
+  width: 44px;
+  height: 44px;
+}
+
+.inv-palette .inv-icon { inset: 4px; }
+
+.hint {
+  font-size: 12px;
+  opacity: 0.6;
+  margin-top: 14px;
+}
+
+/* Cursor sticker that follows the mouse while inventory is open */
+.inv-cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 38px;
+  height: 38px;
+  pointer-events: none;
+  background-size: cover;
+  image-rendering: pixelated;
+  z-index: 100;
+  transform: translate(-50%, -50%);
+  display: none;
+  filter: drop-shadow(0 4px 6px rgba(0,0,0,0.45));
+}
+
+.inv-cursor.visible { display: block; }
+
+.inv-cursor::after {
+  content: attr(data-count);
+  position: absolute;
+  bottom: -2px;
+  right: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000;
+}
+
+/* Delete account button on selection screen */
+.danger-row {
+  margin-top: 14px;
+  display: flex;
+  justify-content: center;
+}
+
+button.danger {
+  background: rgba(180, 50, 60, 0.85);
+  border: 1px solid rgba(255, 120, 130, 0.4);
+}
+button.danger:hover { background: rgba(220, 60, 70, 0.95); }
