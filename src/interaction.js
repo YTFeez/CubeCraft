@@ -1,12 +1,15 @@
 import * as THREE from 'three';
-import { BLOCK, HOTBAR_BLOCKS, BLOCK_INFO, isSolid, blockIconDataURL } from './blocks.js';
+import { BLOCK, HOTBAR_BLOCKS, BLOCK_INFO, isSolid, isFluidSource, blockIconDataURL } from './blocks.js';
 
 const REACH = 6;
 const HOTBAR_SIZE = 9;
 const STACK_MAX = 64;
 
-// Blocks the player cannot pick up when broken.
-const NO_DROP = new Set([BLOCK.BEDROCK, BLOCK.WATER, BLOCK.LAVA]);
+// Blocks the player cannot pick up when broken (fluids included so we never
+// stash a flowing-water block in the inventory).
+const NO_DROP = new Set([
+  BLOCK.BEDROCK, BLOCK.WATER, BLOCK.LAVA, BLOCK.WATER_FLOW, BLOCK.LAVA_FLOW,
+]);
 
 export class Interaction {
   constructor({ camera, world, player, scene, atlasCanvas, audio, onChange, onBreak, onEdit, onSlot, onInventoryChange, hotbar, initialSlot, mode, initialInventory }) {
@@ -196,10 +199,15 @@ export class Interaction {
     if (e.button === 0) {
       const { x, y, z, id } = hit.block;
       if (id === BLOCK.BEDROCK) return;
+      // Fluids are protected: you cannot break them directly. To remove a
+      // source, you must seal its 6 neighbours (= "boucher la source"); the
+      // flow dries up by itself.
+      if (BLOCK_INFO[id]?.fluid) return;
       this.world.setBlock(x, y, z, BLOCK.AIR);
       this.audio?.playBreak(id);
       this.onBreak?.(x, y, z, id);
       this.onEdit?.(x, y, z, BLOCK.AIR);
+      this._propagateFluids(x, y, z);
       this.onChange?.();
       if (this.mode === 'survival') this.addBlock(id, 1);
     } else if (e.button === 2) {
@@ -209,12 +217,26 @@ export class Interaction {
       const ny = hit.block.y + hit.normal.y;
       const nz = hit.block.z + hit.normal.z;
       if (this._blockIntersectsPlayer(nx, ny, nz)) return;
+      // Cannot place a block where a fluid source already is — the source has
+      // to be sealed by surrounding it, not overwritten.
+      if (isFluidSource(this.world.getBlock(nx, ny, nz))) return;
       if (!this._consumeSelected()) return;
       this.world.setBlock(nx, ny, nz, id);
       this.audio?.playPlace(id);
       this.onEdit?.(nx, ny, nz, id);
+      this._propagateFluids(nx, ny, nz);
       this.onChange?.();
     }
+  }
+
+  // Trigger a localised fluid recompute around a block change. The world
+  // emits each resulting block update through onChange so we can broadcast
+  // them as regular edits — only the originating client runs the simulation.
+  _propagateFluids(x, y, z) {
+    this.world.recomputeFluidsAround(x, y, z, {
+      radius: 6,
+      onChange: (cx, cy, cz, nid) => this.onEdit?.(cx, cy, cz, nid),
+    });
   }
 
   _blockIntersectsPlayer(bx, by, bz) {

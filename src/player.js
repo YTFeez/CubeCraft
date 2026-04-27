@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { isSolid, isFluid, BLOCK } from './blocks.js';
+import { isSolid, isFluid, fluidGroup, BLOCK } from './blocks.js';
 import { WORLD_HEIGHT } from './world.js';
 
 // Player is an AABB centered on the x/z feet position.
@@ -329,7 +329,7 @@ export class Player {
     // Lava damage: head OR feet in lava -> 2 dmg every 0.5s (4/s).
     const headBlock = this._blockAtEye();
     const feetBlock = this._blockAtFeet();
-    const inLava = headBlock === BLOCK.LAVA || feetBlock === BLOCK.LAVA;
+    const inLava = fluidGroup(headBlock) === 'lava' || fluidGroup(feetBlock) === 'lava';
     if (inLava) {
       this._lavaDmgAcc += dt;
       if (this._lavaDmgAcc >= 0.5) {
@@ -341,7 +341,7 @@ export class Player {
     }
 
     // Drowning: head in water -> deplete air, then 2 dmg/sec.
-    if (headBlock === BLOCK.WATER) {
+    if (fluidGroup(headBlock) === 'water') {
       this.airTime = Math.max(0, this.airTime - dt);
       if (this.airTime <= 0) {
         this._drownDmgAcc += dt;

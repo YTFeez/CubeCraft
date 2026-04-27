@@ -17,6 +17,8 @@ export const BLOCK = {
   CACTUS: 13,
   LAVA: 14,
   OBSIDIAN: 15,
+  WATER_FLOW: 16,
+  LAVA_FLOW: 17,
 };
 
 const TILE = 16;
@@ -45,6 +47,10 @@ const FACE_TILES = {
   [BLOCK.CACTUS]:   { top: 14, bottom: 14, side: 14 },
   [BLOCK.LAVA]:     { top: 15, bottom: 15, side: 15 },
   [BLOCK.OBSIDIAN]: { top: 16, bottom: 16, side: 16 },
+  // Flowing fluids share the source's tiles — they look identical, the
+  // distinction is only used by gameplay (you can't break/replace sources).
+  [BLOCK.WATER_FLOW]: { top: 11, bottom: 11, side: 11 },
+  [BLOCK.LAVA_FLOW]:  { top: 15, bottom: 15, side: 15 },
 };
 
 export const BLOCK_INFO = {
@@ -57,12 +63,14 @@ export const BLOCK_INFO = {
   [BLOCK.PLANKS]:  { name: 'Planches', solid: true, transparent: false, fluid: false, emissive: 0 },
   [BLOCK.GLASS]:   { name: 'Verre',    solid: true, transparent: true,  fluid: false, emissive: 0 },
   [BLOCK.BEDROCK]: { name: 'Socle',    solid: true, transparent: false, fluid: false, emissive: 0 },
-  [BLOCK.WATER]:   { name: 'Eau',      solid: true, transparent: true,  fluid: true,  emissive: 0 },
+  [BLOCK.WATER]:   { name: 'Eau',      solid: true, transparent: true,  fluid: true,  emissive: 0, source: true },
   [BLOCK.SNOW]:    { name: 'Neige',    solid: true, transparent: false, fluid: false, emissive: 0 },
   [BLOCK.ICE]:     { name: 'Glace',    solid: true, transparent: true,  fluid: false, emissive: 0 },
   [BLOCK.CACTUS]:  { name: 'Cactus',   solid: true, transparent: false, fluid: false, emissive: 0 },
-  [BLOCK.LAVA]:    { name: 'Lave',     solid: true, transparent: true,  fluid: true,  emissive: 1 },
+  [BLOCK.LAVA]:    { name: 'Lave',     solid: true, transparent: true,  fluid: true,  emissive: 1, source: true },
   [BLOCK.OBSIDIAN]:{ name: 'Obsidienne',solid: true, transparent: false, fluid: false, emissive: 0 },
+  [BLOCK.WATER_FLOW]:{ name: 'Eau coulante', solid: true, transparent: true, fluid: true, emissive: 0, source: false },
+  [BLOCK.LAVA_FLOW]: { name: 'Lave coulante',solid: true, transparent: true, fluid: true, emissive: 0.7, source: false },
 };
 
 export const HOTBAR_BLOCKS = [
@@ -79,6 +87,18 @@ export function isOpaque(id) {
 }
 export function isFluid(id) {
   return id !== BLOCK.AIR && BLOCK_INFO[id]?.fluid === true;
+}
+// Only "source" fluids are protected (cannot be broken / overwritten by a
+// placement). Flowing fluids are replaceable so the player can interrupt them.
+export function isFluidSource(id) {
+  return id !== BLOCK.AIR && BLOCK_INFO[id]?.source === true;
+}
+// Returns 'water', 'lava' or null. Used by flow simulation and the lava+water
+// → obsidian rule so source/flow variants are treated as the same liquid.
+export function fluidGroup(id) {
+  if (id === BLOCK.WATER || id === BLOCK.WATER_FLOW) return 'water';
+  if (id === BLOCK.LAVA  || id === BLOCK.LAVA_FLOW)  return 'lava';
+  return null;
 }
 
 // ---------- Procedural atlas ----------

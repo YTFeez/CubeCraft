@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { createNoise2D, createNoise3D } from 'simplex-noise';
-import { BLOCK, isOpaque, isSolid, isFluid, BLOCK_INFO, tileUV, getFaceTile } from './blocks.js';
+import { BLOCK, isOpaque, isSolid, isFluid, isFluidSource, fluidGroup, BLOCK_INFO, tileUV, getFaceTile } from './blocks.js';
 import { BIOMES } from './themes.js';
 
 export const CHUNK_SIZE = 16;
@@ -215,6 +215,135 @@ export class World {
       if (!m) { m = new Map(); this.edits.set(chunkKey, m); }
       for (const [pos, id] of Object.entries(blocks)) {
         m.set(pos, id | 0);
+      }
+    }
+  }
+
+  // ---------- Fluid simulation (cellular automaton, on demand) ----------
+  // The flow simulation is event-driven: it runs whenever the local player
+  // places or breaks a block (via Interaction). Around the change we:
+  //   1. Snapshot a (2r+1)^3 box of blocks.
+  //   2. Clear all flowing fluid blocks in the box (they will be re-derived).
+  //   3. For every fluid SOURCE in the box, check the sealing rule:
+  //      a source whose 6 neighbours are all solid non-fluids is "bouchée"
+  //      and is removed.
+  //   4. BFS from every remaining source, with `down = same level` and
+  //      `side = level + 1`, placing flowing fluid up to FLUID_FLOW_RANGE
+  //      in air cells; we never overwrite solids or other-group fluids.
+  //   5. Diff against the snapshot and emit each change via `onChange` so the
+  //      caller can persist / broadcast the resulting edits.
+  //
+  // Only the originating client runs this; remote players just receive the
+  // resulting setBlock edits, so the simulation stays consistent without the
+  // server having to know about fluids.
+  recomputeFluidsAround(wx, wy, wz, { radius = 6, onChange = null } = {}) {
+    // Box must be wide enough that any in-box source can reach (and be reached
+    // from) the box centre without truncation. We pad the user-provided radius
+    // by FLUID_FLOW_RANGE, and leave a generous vertical margin so falling
+    // water has room to descend (gravity doesn't consume the level budget).
+    const FLUID_FLOW_RANGE = 5;
+    const rh = radius + FLUID_FLOW_RANGE;       // ~11
+    const rv = Math.max(radius, 12) + FLUID_FLOW_RANGE; // ~17
+    const minX = wx - rh, maxX = wx + rh;
+    const minY = Math.max(0, wy - rv), maxY = Math.min(WORLD_HEIGHT - 1, wy + rv);
+    const minZ = wz - rh, maxZ = wz + rh;
+
+    const before = new Map();
+    const key = (x, y, z) => `${x},${y},${z}`;
+    for (let y = minY; y <= maxY; y++) {
+      for (let z = minZ; z <= maxZ; z++) {
+        for (let x = minX; x <= maxX; x++) {
+          before.set(key(x, y, z), this.getBlock(x, y, z));
+        }
+      }
+    }
+
+    // Step 1: clear flowing fluid blocks (we rebuild them from sources).
+    for (let y = minY; y <= maxY; y++) {
+      for (let z = minZ; z <= maxZ; z++) {
+        for (let x = minX; x <= maxX; x++) {
+          const id = this.getBlock(x, y, z);
+          if (id === BLOCK.WATER_FLOW || id === BLOCK.LAVA_FLOW) {
+            this.setBlock(x, y, z, BLOCK.AIR);
+          }
+        }
+      }
+    }
+
+    // Step 2: collect alive sources, dropping any that are fully sealed.
+    const sources = [];
+    for (let y = minY; y <= maxY; y++) {
+      for (let z = minZ; z <= maxZ; z++) {
+        for (let x = minX; x <= maxX; x++) {
+          const id = this.getBlock(x, y, z);
+          if (!isFluidSource(id)) continue;
+          // Sealing rule: every direct neighbour must be a SOLID non-fluid.
+          // If any neighbour is air or any fluid, the source still has an
+          // outflow and stays alive.
+          const ns = [
+            this.getBlock(x + 1, y, z),
+            this.getBlock(x - 1, y, z),
+            this.getBlock(x, y + 1, z),
+            this.getBlock(x, y - 1, z),
+            this.getBlock(x, y, z + 1),
+            this.getBlock(x, y, z - 1),
+          ];
+          let sealed = true;
+          for (const n of ns) {
+            if (n === BLOCK.AIR) { sealed = false; break; }
+            if (BLOCK_INFO[n]?.fluid) { sealed = false; break; }
+          }
+          if (sealed) {
+            this.setBlock(x, y, z, BLOCK.AIR);
+          } else {
+            sources.push({ x, y, z, group: fluidGroup(id) });
+          }
+        }
+      }
+    }
+
+    // Step 3: BFS flow placement. Down-step keeps the same level (gravity);
+    // sideways steps add 1 until FLUID_FLOW_RANGE is reached.
+    const visited = new Map(); // pos -> level
+    const queue = [];
+    for (const s of sources) {
+      visited.set(key(s.x, s.y, s.z), 0);
+      queue.push({ x: s.x, y: s.y, z: s.z, level: 0, group: s.group });
+    }
+    while (queue.length > 0) {
+      const c = queue.shift();
+      const dirs = [
+        { dx: 0, dy: -1, dz: 0, levelInc: 0 }, // gravity
+        { dx: 1,  dy: 0, dz: 0,  levelInc: 1 },
+        { dx: -1, dy: 0, dz: 0,  levelInc: 1 },
+        { dx: 0,  dy: 0, dz: 1,  levelInc: 1 },
+        { dx: 0,  dy: 0, dz: -1, levelInc: 1 },
+      ];
+      for (const d of dirs) {
+        const nx = c.x + d.dx, ny = c.y + d.dy, nz = c.z + d.dz;
+        if (ny < 0 || ny >= WORLD_HEIGHT) continue;
+        if (nx < minX || nx > maxX || nz < minZ || nz > maxZ) continue;
+        const nlevel = c.level + d.levelInc;
+        if (nlevel > FLUID_FLOW_RANGE) continue;
+        const k = key(nx, ny, nz);
+        const prev = visited.get(k);
+        if (prev != null && prev <= nlevel) continue;
+        const id = this.getBlock(nx, ny, nz);
+        // Only flow into air; sources, other-group fluids and solids stop us.
+        if (id !== BLOCK.AIR) continue;
+        const flowId = c.group === 'water' ? BLOCK.WATER_FLOW : BLOCK.LAVA_FLOW;
+        this.setBlock(nx, ny, nz, flowId);
+        visited.set(k, nlevel);
+        queue.push({ x: nx, y: ny, z: nz, level: nlevel, group: c.group });
+      }
+    }
+
+    // Step 4: emit edits for every cell that actually changed.
+    if (onChange) {
+      for (const [k, oldId] of before) {
+        const [xs, ys, zs] = k.split(',').map(Number);
+        const newId = this.getBlock(xs, ys, zs);
+        if (newId !== oldId) onChange(xs, ys, zs, newId);
       }
     }
   }
@@ -579,23 +708,23 @@ export class Chunk {
     return 3 - (side1 + side2 + cornr);
   }
 
-  // Resolve water + lava contact: any lava cell that touches water (in any of
-  // the 6 directions, possibly across chunk borders) is converted to obsidian
-  // — like real Minecraft. Idempotent: safe to re-run on every mesh rebuild.
+  // Resolve water + lava contact: any lava cell (source or flowing) touching
+  // water (source or flowing) on any of its 6 sides — possibly across chunk
+  // borders — is converted to obsidian. Idempotent: safe to re-run on every
+  // mesh rebuild.
   _resolveFluidContact() {
     for (let y = 1; y < WORLD_HEIGHT - 1; y++) {
       for (let lz = 0; lz < CHUNK_SIZE; lz++) {
         for (let lx = 0; lx < CHUNK_SIZE; lx++) {
-          if (this.blocks[this.idx(lx, y, lz)] !== BLOCK.LAVA) continue;
-          // this.get() crosses chunk borders via world.getBlock when a
-          // neighbor is loaded, so we catch contact at chunk seams.
+          const cur = this.blocks[this.idx(lx, y, lz)];
+          if (fluidGroup(cur) !== 'lava') continue;
           if (
-            this.get(lx + 1, y, lz) === BLOCK.WATER ||
-            this.get(lx - 1, y, lz) === BLOCK.WATER ||
-            this.get(lx, y, lz + 1) === BLOCK.WATER ||
-            this.get(lx, y, lz - 1) === BLOCK.WATER ||
-            this.get(lx, y + 1, lz) === BLOCK.WATER ||
-            this.get(lx, y - 1, lz) === BLOCK.WATER
+            fluidGroup(this.get(lx + 1, y, lz)) === 'water' ||
+            fluidGroup(this.get(lx - 1, y, lz)) === 'water' ||
+            fluidGroup(this.get(lx, y, lz + 1)) === 'water' ||
+            fluidGroup(this.get(lx, y, lz - 1)) === 'water' ||
+            fluidGroup(this.get(lx, y + 1, lz)) === 'water' ||
+            fluidGroup(this.get(lx, y - 1, lz)) === 'water'
           ) {
             this.set(lx, y, lz, BLOCK.OBSIDIAN);
           }
@@ -637,7 +766,12 @@ export class Chunk {
             let showFace = false;
             if (neighbor === BLOCK.AIR) showFace = true;
             else if (!isOpaque(neighbor) && isOpaque(id)) showFace = true;
-            else if (!isOpaque(id) && !isOpaque(neighbor) && neighbor !== id) showFace = true;
+            else if (!isOpaque(id) && !isOpaque(neighbor) && neighbor !== id) {
+              // Treat source + flowing of the same liquid as a single body so
+              // the internal face between (water, water_flow) is hidden.
+              const g = fluidGroup(id);
+              if (!(g && g === fluidGroup(neighbor))) showFace = true;
+            }
             if (!showFace) continue;
 
             const tileIndex = getFaceTile(id, face.uvOrder);
