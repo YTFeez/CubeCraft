@@ -6,43 +6,51 @@ import { BLOCK } from './blocks.js';
 // Each biome describes how a single column should look (surface block, fluid,
 // height noise, trees). Multi-biome worlds compose them via a low-frequency
 // noise over (x, z).
+// All biomes share the same sea level and similar height frequencies so they
+// can be blended smoothly. Differences come mainly from amplitude, offset,
+// surface blocks and fluid.
 export const BIOMES = {
   forest: {
     id: 'forest',
+    // Climate position in (temperature, moisture) space, both in [-1, 1].
+    climate: { T: -0.05, M: 0.5 },
     seaLevel: 24,
-    heightAmp: [8, 4, 9.6],
+    heightAmp: [8, 4, 9],
     heightFreq: [0.015, 0.05, 0.005],
-    heightOffset: 0,
+    heightOffset: 1,
     surface: { top: BLOCK.GRASS, beach: BLOCK.SAND, sub: BLOCK.DIRT, deep: BLOCK.STONE, bedrock: BLOCK.BEDROCK },
     fluid: { id: BLOCK.WATER, level: 24 },
-    trees: { density: 4, type: 'oak' },
+    trees: { density: 5, type: 'oak' },
   },
   desert: {
     id: 'desert',
+    climate: { T: 0.7, M: -0.5 },
     seaLevel: 24,
-    heightAmp: [10, 4, 5],
-    heightFreq: [0.012, 0.05, 0.004],
-    heightOffset: 4, // dunes always above sea
+    heightAmp: [9, 3, 6],
+    heightFreq: [0.014, 0.05, 0.004],
+    heightOffset: 4, // dunes stay above sea so it always reads as desert
     surface: { top: BLOCK.SAND, beach: BLOCK.SAND, sub: BLOCK.SAND, deep: BLOCK.STONE, bedrock: BLOCK.BEDROCK },
     fluid: null,
-    trees: { density: 3, type: 'cactus' },
+    trees: { density: 2, type: 'cactus' },
   },
   tundra: {
     id: 'tundra',
+    climate: { T: -0.7, M: 0.1 },
     seaLevel: 24,
-    heightAmp: [6, 3, 8],
+    heightAmp: [6, 3, 7],
     heightFreq: [0.015, 0.05, 0.005],
-    heightOffset: 0,
+    heightOffset: 1,
     surface: { top: BLOCK.SNOW, beach: BLOCK.SNOW, sub: BLOCK.DIRT, deep: BLOCK.STONE, bedrock: BLOCK.BEDROCK },
     fluid: { id: BLOCK.ICE, level: 24 },
     trees: { density: 2, type: 'spruce' },
   },
   volcanic: {
     id: 'volcanic',
+    climate: { T: 0.55, M: 0.7 },
     seaLevel: 24,
-    heightAmp: [12, 6, 6],
-    heightFreq: [0.018, 0.06, 0.006],
-    heightOffset: -2, // pits and ridges
+    heightAmp: [11, 5, 6],
+    heightFreq: [0.017, 0.06, 0.006],
+    heightOffset: -1, // pits and ridges
     surface: { top: BLOCK.STONE, beach: BLOCK.STONE, sub: BLOCK.STONE, deep: BLOCK.STONE, bedrock: BLOCK.BEDROCK },
     fluid: { id: BLOCK.LAVA, level: 22 },
     trees: { density: 1, type: 'dead' },

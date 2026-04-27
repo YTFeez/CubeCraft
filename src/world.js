@@ -7,6 +7,15 @@ export const CHUNK_SIZE = 16;
 export const WORLD_HEIGHT = 64;
 export const SEA_LEVEL = 24;
 
+// Ordered list of biomes used by climate-based selection. Each must define a
+// `climate: { T, M }` point.
+const BIOME_LIST = [
+  BIOMES.tundra,
+  BIOMES.forest,
+  BIOMES.desert,
+  BIOMES.volcanic,
+];
+
 const FACES = [
   // +X
   { dir: [1, 0, 0],  corners: [[1,0,0],[1,0,1],[1,1,0],[1,1,1]], uvOrder: 'side', normal: [1,0,0] },
@@ -288,17 +297,78 @@ export class Chunk {
     }
   }
 
-  // Pick a biome for a (worldX, worldZ) column on a multi-biome world.
-  _pickBiome(wx, wz, freq) {
-    const a = this.world.biomeNoiseA(wx * freq, wz * freq);
-    const b = this.world.biomeNoiseB(wx * freq + 100, wz * freq - 100);
-    if (a >= 0 && b >= 0) return BIOMES.forest;
-    if (a >= 0 && b < 0)  return BIOMES.desert;
-    if (a < 0 && b >= 0)  return BIOMES.tundra;
-    return BIOMES.volcanic;
+  // Compute the climate-driven biome blend at (worldX, worldZ).
+  // Returns:
+  //   {
+  //     weights:        Float32Array of weights (sum = 1) per BIOME_LIST entry,
+  //     dominant:       the biome with the highest weight (used for surface block, fluid, trees),
+  //     seaLevel,       blended sea level (always near 24 since all biomes share it),
+  //     heightAmp:      blended 3-octave amplitudes,
+  //     heightFreq:     blended 3-octave frequencies,
+  //     heightOffset:   blended vertical offset,
+  //     surface, fluid, trees: copied from `dominant`
+  //   }
+  _biomeAt(wx, wz, freq) {
+    const w = this.world;
+    // Two large-scale climate fields. Slightly different frequencies so
+    // temperature and moisture don't perfectly align.
+    const T0 = w.biomeNoiseA(wx * freq * 0.9, wz * freq * 0.9);
+    const M0 = w.biomeNoiseB(wx * freq * 1.1 + 1000, wz * freq * 1.1 - 1000);
+    // High-frequency jitter feathers the boundary between climate zones so we
+    // get natural, irregular biome edges instead of straight noise iso-lines.
+    const jF = freq * 6;
+    const T = T0 + w.biomeNoiseA(wx * jF + 5000, wz * jF + 5000) * 0.18;
+    const M = M0 + w.biomeNoiseB(wx * jF - 5000, wz * jF - 5000) * 0.18;
+
+    const list = BIOME_LIST;
+    const ws = new Array(list.length);
+    let total = 0, bestIdx = 0, bestW = -Infinity;
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i].climate;
+      const dT = T - c.T, dM = M - c.M;
+      const d2 = dT * dT + dM * dM;
+      // exp(-k * d²) gives a smooth Gaussian falloff. k=8 keeps dominance
+      // tight (most columns are ~one biome) while still creating a 1-2 chunk
+      // wide blended border.
+      const wi = Math.exp(-d2 * 8);
+      ws[i] = wi;
+      total += wi;
+      if (wi > bestW) { bestW = wi; bestIdx = i; }
+    }
+    const inv = total > 0 ? 1 / total : 0;
+    let seaLevel = 0, heightOffset = 0;
+    const heightAmp = [0, 0, 0];
+    const heightFreq = [0, 0, 0];
+    for (let i = 0; i < list.length; i++) {
+      const wi = ws[i] * inv;
+      ws[i] = wi;
+      const b = list[i];
+      seaLevel     += wi * (b.seaLevel ?? SEA_LEVEL);
+      heightOffset += wi * (b.heightOffset || 0);
+      heightAmp[0] += wi * b.heightAmp[0];
+      heightAmp[1] += wi * b.heightAmp[1];
+      heightAmp[2] += wi * b.heightAmp[2];
+      heightFreq[0]+= wi * b.heightFreq[0];
+      heightFreq[1]+= wi * b.heightFreq[1];
+      heightFreq[2]+= wi * b.heightFreq[2];
+    }
+    const dominant = list[bestIdx];
+    return {
+      weights: ws,
+      dominant,
+      seaLevel,
+      heightAmp,
+      heightFreq,
+      heightOffset,
+      surface: dominant.surface,
+      fluid: dominant.fluid,
+      trees: dominant.trees,
+    };
   }
 
-  // Standard heightmap generation. Per-column biome lookup if multiBiome.
+  // Standard heightmap generation. Per-column climate-blended biome lookup
+  // when the theme is multiBiome; otherwise uses a single biome straight from
+  // the theme.
   _generateTerrain() {
     const { noise2D, noise2Db } = this.world;
     const theme = this.world.theme;
@@ -318,13 +388,14 @@ export class Chunk {
       surface: theme.surface,
       fluid: theme.fluid,
       trees: theme.trees || { density: 0, type: 'none' },
+      dominant: { id: 'theme' },
     };
 
     for (let lz = 0; lz < CHUNK_SIZE; lz++) {
       for (let lx = 0; lx < CHUNK_SIZE; lx++) {
         const wx = origin[0] + lx;
         const wz = origin[1] + lz;
-        const biome = multi ? this._pickBiome(wx, wz, biomeFreq) : defaultBiome;
+        const biome = multi ? this._biomeAt(wx, wz, biomeFreq) : defaultBiome;
         biomeAt[lz * CHUNK_SIZE + lx] = biome;
 
         const [a1, a2, a3] = biome.heightAmp;
@@ -360,25 +431,53 @@ export class Chunk {
     const chRand = mulberry32(
       (hashStr(this.world.seed) ^ (this.cx * 73856093) ^ (this.cz * 19349663)) >>> 0
     );
-    // For multi-biome chunks, scale density by area count so we still get a
-    // good number of trees overall.
-    const baseDensity = multi ? 5 : (defaultBiome.trees.density || 0);
-    const treeCount = Math.floor(chRand() * (baseDensity + 1));
-    for (let i = 0; i < treeCount; i++) {
-      const tx = Math.floor(chRand() * CHUNK_SIZE);
-      const tz = Math.floor(chRand() * CHUNK_SIZE);
-      const h = heights[tz * CHUNK_SIZE + tx];
-      const biome = biomeAt[tz * CHUNK_SIZE + tx];
-      const tcfg = biome.trees || { density: 0, type: 'none' };
-      if (!tcfg.type || tcfg.type === 'none') continue;
-      const seaLevel = biome.seaLevel ?? SEA_LEVEL;
-      if (h <= seaLevel + 1) continue;
-      if (tx < 2 || tx > CHUNK_SIZE - 3 || tz < 2 || tz > CHUNK_SIZE - 3) continue;
-      // Don't grow on top of fluid (e.g. lava lakes in volcanic biome).
-      const top = this.get(tx, h, tz);
-      if (top === BLOCK.LAVA || top === BLOCK.WATER || top === BLOCK.ICE) continue;
-      this._growTree(tcfg.type, tx, h, tz, chRand);
+
+    if (multi) {
+      // Probabilistic per-attempt placement: each attempt rolls against the
+      // local biome's tree density, so forests are dense and deserts/volcanic
+      // are sparse without us having to pick a single density per chunk.
+      const TREE_ATTEMPTS = 16;
+      for (let i = 0; i < TREE_ATTEMPTS; i++) {
+        const tx = Math.floor(chRand() * CHUNK_SIZE);
+        const tz = Math.floor(chRand() * CHUNK_SIZE);
+        const h = heights[tz * CHUNK_SIZE + tx];
+        const biome = biomeAt[tz * CHUNK_SIZE + tx];
+        const tcfg = biome.trees || { density: 0, type: 'none' };
+        if (!tcfg.type || tcfg.type === 'none') continue;
+        // Density 0..5 → probability 0..0.5
+        const prob = Math.max(0, Math.min(1, (tcfg.density || 0) / 10));
+        if (chRand() > prob) continue;
+        if (!this._isTreeSiteOk(tx, h, tz, biome)) continue;
+        this._growTree(tcfg.type, tx, h, tz, chRand);
+      }
+    } else {
+      // Single-biome theme: classic per-chunk count.
+      const treeCount = Math.floor(chRand() * (defaultBiome.trees.density + 1));
+      for (let i = 0; i < treeCount; i++) {
+        const tx = Math.floor(chRand() * CHUNK_SIZE);
+        const tz = Math.floor(chRand() * CHUNK_SIZE);
+        const h = heights[tz * CHUNK_SIZE + tx];
+        if (!this._isTreeSiteOk(tx, h, tz, defaultBiome)) continue;
+        const tcfg = defaultBiome.trees;
+        if (!tcfg.type || tcfg.type === 'none') continue;
+        this._growTree(tcfg.type, tx, h, tz, chRand);
+      }
     }
+  }
+
+  _isTreeSiteOk(tx, h, tz, biome) {
+    const seaLevel = biome.seaLevel ?? SEA_LEVEL;
+    if (h <= seaLevel + 1) return false;
+    if (tx < 2 || tx > CHUNK_SIZE - 3 || tz < 2 || tz > CHUNK_SIZE - 3) return false;
+    const top = this.get(tx, h, tz);
+    if (top === BLOCK.LAVA || top === BLOCK.WATER || top === BLOCK.ICE) return false;
+    // Don't grow cacti on grass or oaks on sand: enforce surface compatibility.
+    const tcfg = biome.trees || {};
+    if (tcfg.type === 'cactus' && top !== BLOCK.SAND) return false;
+    if (tcfg.type === 'oak'    && top !== BLOCK.GRASS) return false;
+    if (tcfg.type === 'spruce' && top !== BLOCK.SNOW && top !== BLOCK.GRASS) return false;
+    if (tcfg.type === 'dead'   && top !== BLOCK.STONE) return false;
+    return true;
   }
 
   _growTree(type, tx, h, tz, rand) {
