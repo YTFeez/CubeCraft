@@ -1,0 +1,18 @@
+{
+  "name": "cubecraft",
+  "version": "1.0.0",
+  "description": "Minecraft-like multiplayer game in the browser with 4 themed worlds",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  }
+}

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cubecraft - 4 mondes en multijoueur</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+        "simplex-noise": "https://unpkg.com/simplex-noise@4.0.1/dist/esm/simplex-noise.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="crosshair">+</div>
+
+  <div id="hud">
+    <div id="clock">☀ 08:00</div>
+    <div id="coords">x:0 y:0 z:0</div>
+    <div id="fps">FPS: --</div>
+    <div id="server-info"></div>
+  </div>
+
+  <div id="players-panel">
+    <div class="players-title">Joueurs en ligne</div>
+    <ul id="players-list"></ul>
+  </div>
+
+  <div id="chat">
+    <div id="chat-log"></div>
+    <input id="chat-input" type="text" maxlength="200" placeholder="Appuie sur T pour discuter..." />
+  </div>
+
+  <div id="hotbar"></div>
+
+  <!-- Auth screen (shown first if no valid token) -->
+  <div id="auth" class="overlay hidden">
+    <div class="auth-panel">
+      <h1>Cubecraft</h1>
+      <p class="subtitle">Connecte-toi pour rejoindre les mondes</p>
+
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-tab="login">Connexion</button>
+        <button class="auth-tab" data-tab="register">Inscription</button>
+      </div>
+
+      <form id="auth-form" autocomplete="on">
+        <label>Pseudo
+          <input id="auth-name" type="text" maxlength="16" minlength="3" required pattern="[a-zA-Z0-9_-]{3,16}" autocomplete="username" />
+        </label>
+        <label>Mot de passe
+          <input id="auth-password" type="password" maxlength="64" minlength="4" required autocomplete="current-password" />
+        </label>
+        <p id="auth-error" class="auth-error"></p>
+        <button type="submit" id="auth-submit">Se connecter</button>
+      </form>
+
+      <p class="hint">Le pseudo doit faire entre 3 et 16 caractères (lettres, chiffres, _, -).</p>
+    </div>
+  </div>
+
+  <!-- World selection screen (shown after auth) -->
+  <div id="selection" class="overlay hidden">
+    <div class="select-panel">
+      <h1>Cubecraft</h1>
+      <p class="subtitle">Choisis ton monde et rejoins les autres joueurs</p>
+
+      <div class="name-row">
+        <span>Connecté en tant que <b id="me-name">…</b></span>
+        <button id="logout-btn" class="secondary small">Déconnexion</button>
+      </div>
+
+      <div id="worlds" class="worlds">
+        <!-- Cards injected by JS -->
+      </div>
+
+      <p class="hint">Tes constructions et ta position sont sauvegardées par compte et par monde.</p>
+    </div>
+  </div>
+
+  <!-- In-game pause / controls menu -->
+  <div id="menu" class="overlay hidden">
+    <div class="panel">
+      <h1>Cubecraft</h1>
+      <p id="menu-subtitle" class="subtitle">Connecté au monde…</p>
+      <ul class="controls">
+        <li><b>Z Q S D</b> - Se déplacer</li>
+        <li><b>Espace</b> - Sauter / nager</li>
+        <li><b>Shift</b> - Courir</li>
+        <li><b>Souris</b> - Regarder</li>
+        <li><b>Clic gauche</b> - Casser</li>
+        <li><b>Clic droit</b> - Poser</li>
+        <li><b>1-7</b> ou <b>molette</b> - Bloc actif</li>
+        <li><b>T</b> - Chat</li>
+        <li><b>L</b> - Basculer jour/nuit</li>
+        <li><b>Echap</b> - Pause</li>
+      </ul>
+      <div class="menu-buttons">
+        <button id="play-btn">Jouer</button>
+        <button id="leave-btn" class="secondary">Quitter le monde</button>
+      </div>
+      <p class="hint">Astuce : pose des panneaux en construisant à plusieurs.</p>
+    </div>
+  </div>
+
+  <div id="loading" class="overlay hidden">
+    <div class="panel">
+      <h2>Connexion au monde…</h2>
+      <div class="progress"><div id="progress-bar"></div></div>
+    </div>
+  </div>
+
+  <canvas id="game"></canvas>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

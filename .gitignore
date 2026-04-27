@@ -1,0 +1,6 @@
+node_modules/
+world-saves/
+data/
+*.log
+.DS_Store
+
