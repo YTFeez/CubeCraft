@@ -7,13 +7,13 @@ export const CHUNK_SIZE = 16;
 export const WORLD_HEIGHT = 64;
 export const SEA_LEVEL = 24;
 
-// Ordered list of biomes used by climate-based selection. Each must define a
-// `climate: { T, M }` point.
-const BIOME_LIST = [
-  BIOMES.tundra,
-  BIOMES.forest,
-  BIOMES.desert,
-  BIOMES.volcanic,
+// Hierarchical biome layout along the temperature axis.
+// Order is COLD -> TEMPERATE -> HOT. Volcanic is NOT in this list; it is
+// carved INSIDE desert by a separate noise gate (see _biomeAt).
+const T_BANDS = [
+  BIOMES.tundra, // T = -0.7
+  BIOMES.forest, // T =  0.0  (plains, the dominant default)
+  BIOMES.desert, // T = +0.7  (hot, contains volcanic patches)
 ];
 
 const FACES = [
@@ -297,52 +297,66 @@ export class Chunk {
     }
   }
 
-  // Compute the climate-driven biome blend at (worldX, worldZ).
-  // Returns:
-  //   {
-  //     weights:        Float32Array of weights (sum = 1) per BIOME_LIST entry,
-  //     dominant:       the biome with the highest weight (used for surface block, fluid, trees),
-  //     seaLevel,       blended sea level (always near 24 since all biomes share it),
-  //     heightAmp:      blended 3-octave amplitudes,
-  //     heightFreq:     blended 3-octave frequencies,
-  //     heightOffset:   blended vertical offset,
-  //     surface, fluid, trees: copied from `dominant`
-  //   }
+  // Compute the biome blend at (worldX, worldZ) using a hierarchical climate
+  // model:
+  //   1. T (temperature) is a low-freq noise + high-freq jitter; it selects
+  //      between the three T-bands {tundra, forest/plains, desert} with a
+  //      Gaussian weight, giving smooth gradient transitions.
+  //   2. Inside hot zones (desert dominant), a separate V noise carves
+  //      volcanic patches. The carving is gated by desert dominance so
+  //      volcanic never appears next to plains or tundra directly.
+  //
+  // Returns blended params (seaLevel, heightAmp, heightFreq, heightOffset)
+  // and a `dominant` biome object used for surface block, fluid and trees.
   _biomeAt(wx, wz, freq) {
     const w = this.world;
-    // Two large-scale climate fields. Slightly different frequencies so
-    // temperature and moisture don't perfectly align.
-    const T0 = w.biomeNoiseA(wx * freq * 0.9, wz * freq * 0.9);
-    const M0 = w.biomeNoiseB(wx * freq * 1.1 + 1000, wz * freq * 1.1 - 1000);
-    // High-frequency jitter feathers the boundary between climate zones so we
-    // get natural, irregular biome edges instead of straight noise iso-lines.
-    const jF = freq * 6;
-    const T = T0 + w.biomeNoiseA(wx * jF + 5000, wz * jF + 5000) * 0.18;
-    const M = M0 + w.biomeNoiseB(wx * jF - 5000, wz * jF - 5000) * 0.18;
+    // 1) Temperature: very low frequency = wide bands. A small higher-freq
+    //    jitter feathers the borders so they don't look like clean noise
+    //    iso-lines.
+    const T0 = w.biomeNoiseA(wx * freq, wz * freq);
+    const Tj = w.biomeNoiseA(wx * freq * 7 + 5000, wz * freq * 7 + 5000);
+    const T = Math.max(-1, Math.min(1, T0 + Tj * 0.15));
 
-    const list = BIOME_LIST;
-    const ws = new Array(list.length);
-    let total = 0, bestIdx = 0, bestW = -Infinity;
-    for (let i = 0; i < list.length; i++) {
-      const c = list[i].climate;
-      const dT = T - c.T, dM = M - c.M;
-      const d2 = dT * dT + dM * dM;
-      // exp(-k * d²) gives a smooth Gaussian falloff. k=8 keeps dominance
-      // tight (most columns are ~one biome) while still creating a 1-2 chunk
-      // wide blended border.
-      const wi = Math.exp(-d2 * 8);
+    // 2) Volcanic gate: independent noise at a slightly higher freq so
+    //    volcanic patches feel like islands inside the desert.
+    const V0 = w.biomeNoiseB(wx * freq * 2.2 + 9999, wz * freq * 2.2 - 9999);
+    const Vj = w.biomeNoiseB(wx * freq * 9 - 1234, wz * freq * 9 + 1234);
+    const V = V0 + Vj * 0.10;
+
+    // 3) Weights along T axis (Gaussian on |T - bandT|).
+    const bands = T_BANDS;
+    const ws = [0, 0, 0];
+    let total = 0, bestIdx = 1, bestW = -Infinity;
+    for (let i = 0; i < bands.length; i++) {
+      const dT = T - bands[i].T;
+      // k=10 keeps each biome dominant in its band but still leaves a wide
+      // gradient in the boundary zone (about 0.15 in T).
+      const wi = Math.exp(-dT * dT * 10);
       ws[i] = wi;
       total += wi;
       if (wi > bestW) { bestW = wi; bestIdx = i; }
     }
-    const inv = total > 0 ? 1 / total : 0;
+    if (total > 0) for (let i = 0; i < ws.length; i++) ws[i] /= total;
+
+    // 4) Volcanic factor: only "fires" when desert dominance is strong AND V
+    //    crosses a threshold. Smoothstep on V keeps patches bordered cleanly.
+    const desertW = ws[2];
+    let volcanicFactor = 0;
+    if (desertW > 0.55 && V > 0.30) {
+      const vt = Math.min(1, (V - 0.30) / 0.30);     // 0..1 over V in [0.30, 0.60]
+      const dt = Math.min(1, (desertW - 0.55) / 0.25); // 0..1 over desertW in [0.55, 0.80]
+      const sV = vt * vt * (3 - 2 * vt);             // smoothstep
+      const sD = dt * dt * (3 - 2 * dt);
+      volcanicFactor = sV * sD;
+    }
+
+    // 5) Blend numeric params from T-bands.
     let seaLevel = 0, heightOffset = 0;
     const heightAmp = [0, 0, 0];
     const heightFreq = [0, 0, 0];
-    for (let i = 0; i < list.length; i++) {
-      const wi = ws[i] * inv;
-      ws[i] = wi;
-      const b = list[i];
+    for (let i = 0; i < bands.length; i++) {
+      const wi = ws[i];
+      const b = bands[i];
       seaLevel     += wi * (b.seaLevel ?? SEA_LEVEL);
       heightOffset += wi * (b.heightOffset || 0);
       heightAmp[0] += wi * b.heightAmp[0];
@@ -352,10 +366,28 @@ export class Chunk {
       heightFreq[1]+= wi * b.heightFreq[1];
       heightFreq[2]+= wi * b.heightFreq[2];
     }
-    const dominant = list[bestIdx];
+
+    // 6) If volcanic is firing, lerp params toward volcanic for a hotter,
+    //    pittier terrain inside the patch.
+    if (volcanicFactor > 0) {
+      const vb = BIOMES.volcanic;
+      const f = volcanicFactor;
+      seaLevel     = seaLevel + (vb.seaLevel - seaLevel) * f;
+      heightOffset = heightOffset + (vb.heightOffset - heightOffset) * f;
+      for (let k = 0; k < 3; k++) {
+        heightAmp[k]  = heightAmp[k] + (vb.heightAmp[k]  - heightAmp[k])  * f;
+        heightFreq[k] = heightFreq[k] + (vb.heightFreq[k] - heightFreq[k]) * f;
+      }
+    }
+
+    // Pick dominant biome: volcanic only when its factor crosses 0.5 so
+    // surface flips cleanly.
+    const dominant = volcanicFactor >= 0.5 ? BIOMES.volcanic : bands[bestIdx];
+
     return {
       weights: ws,
       dominant,
+      volcanicFactor,
       seaLevel,
       heightAmp,
       heightFreq,
@@ -547,7 +579,36 @@ export class Chunk {
     return 3 - (side1 + side2 + cornr);
   }
 
+  // Resolve water + lava contact: any lava cell that touches water (in any of
+  // the 6 directions, possibly across chunk borders) is converted to obsidian
+  // — like real Minecraft. Idempotent: safe to re-run on every mesh rebuild.
+  _resolveFluidContact() {
+    for (let y = 1; y < WORLD_HEIGHT - 1; y++) {
+      for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+        for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+          if (this.blocks[this.idx(lx, y, lz)] !== BLOCK.LAVA) continue;
+          // this.get() crosses chunk borders via world.getBlock when a
+          // neighbor is loaded, so we catch contact at chunk seams.
+          if (
+            this.get(lx + 1, y, lz) === BLOCK.WATER ||
+            this.get(lx - 1, y, lz) === BLOCK.WATER ||
+            this.get(lx, y, lz + 1) === BLOCK.WATER ||
+            this.get(lx, y, lz - 1) === BLOCK.WATER ||
+            this.get(lx, y + 1, lz) === BLOCK.WATER ||
+            this.get(lx, y - 1, lz) === BLOCK.WATER
+          ) {
+            this.set(lx, y, lz, BLOCK.OBSIDIAN);
+          }
+        }
+      }
+    }
+  }
+
   buildMesh() {
+    // Resolve water/lava → obsidian contacts before meshing so the visible
+    // tiles match the actual block data.
+    this._resolveFluidContact();
+
     // Three buckets: opaque (with AO), transparent leaves/glass, water.
     const opaque = { positions: [], normals: [], uvs: [], colors: [], indices: [] };
     const trans  = { positions: [], normals: [], uvs: [], colors: [], indices: [] };

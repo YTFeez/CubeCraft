@@ -16,32 +16,35 @@ export const BLOCK = {
   ICE: 12,
   CACTUS: 13,
   LAVA: 14,
+  OBSIDIAN: 15,
 };
 
 const TILE = 16;
 const ATLAS_COLS = 4;
-const ATLAS_ROWS = 4;
+const ATLAS_ROWS = 5;
 
-// Tile index in the atlas (col + row * ATLAS_COLS). 4x4 grid:
+// Tile index in the atlas (col + row * ATLAS_COLS). 4x5 grid:
 //  0 grass_top    1 grass_side  2 dirt        3 stone
 //  4 sand         5 wood_top    6 wood_side   7 leaves
 //  8 planks       9 glass      10 bedrock    11 water
 // 12 snow        13 ice        14 cactus     15 lava
+// 16 obsidian
 const FACE_TILES = {
-  [BLOCK.GRASS]:   { top: 0,  bottom: 2,  side: 1  },
-  [BLOCK.DIRT]:    { top: 2,  bottom: 2,  side: 2  },
-  [BLOCK.STONE]:   { top: 3,  bottom: 3,  side: 3  },
-  [BLOCK.SAND]:    { top: 4,  bottom: 4,  side: 4  },
-  [BLOCK.WOOD]:    { top: 5,  bottom: 5,  side: 6  },
-  [BLOCK.LEAVES]:  { top: 7,  bottom: 7,  side: 7  },
-  [BLOCK.PLANKS]:  { top: 8,  bottom: 8,  side: 8  },
-  [BLOCK.GLASS]:   { top: 9,  bottom: 9,  side: 9  },
-  [BLOCK.BEDROCK]: { top: 10, bottom: 10, side: 10 },
-  [BLOCK.WATER]:   { top: 11, bottom: 11, side: 11 },
-  [BLOCK.SNOW]:    { top: 12, bottom: 2,  side: 12 },
-  [BLOCK.ICE]:     { top: 13, bottom: 13, side: 13 },
-  [BLOCK.CACTUS]:  { top: 14, bottom: 14, side: 14 },
-  [BLOCK.LAVA]:    { top: 15, bottom: 15, side: 15 },
+  [BLOCK.GRASS]:    { top: 0,  bottom: 2,  side: 1  },
+  [BLOCK.DIRT]:     { top: 2,  bottom: 2,  side: 2  },
+  [BLOCK.STONE]:    { top: 3,  bottom: 3,  side: 3  },
+  [BLOCK.SAND]:     { top: 4,  bottom: 4,  side: 4  },
+  [BLOCK.WOOD]:     { top: 5,  bottom: 5,  side: 6  },
+  [BLOCK.LEAVES]:   { top: 7,  bottom: 7,  side: 7  },
+  [BLOCK.PLANKS]:   { top: 8,  bottom: 8,  side: 8  },
+  [BLOCK.GLASS]:    { top: 9,  bottom: 9,  side: 9  },
+  [BLOCK.BEDROCK]:  { top: 10, bottom: 10, side: 10 },
+  [BLOCK.WATER]:    { top: 11, bottom: 11, side: 11 },
+  [BLOCK.SNOW]:     { top: 12, bottom: 2,  side: 12 },
+  [BLOCK.ICE]:      { top: 13, bottom: 13, side: 13 },
+  [BLOCK.CACTUS]:   { top: 14, bottom: 14, side: 14 },
+  [BLOCK.LAVA]:     { top: 15, bottom: 15, side: 15 },
+  [BLOCK.OBSIDIAN]: { top: 16, bottom: 16, side: 16 },
 };
 
 export const BLOCK_INFO = {
@@ -59,11 +62,12 @@ export const BLOCK_INFO = {
   [BLOCK.ICE]:     { name: 'Glace',    solid: true, transparent: true,  fluid: false, emissive: 0 },
   [BLOCK.CACTUS]:  { name: 'Cactus',   solid: true, transparent: false, fluid: false, emissive: 0 },
   [BLOCK.LAVA]:    { name: 'Lave',     solid: true, transparent: true,  fluid: true,  emissive: 1 },
+  [BLOCK.OBSIDIAN]:{ name: 'Obsidienne',solid: true, transparent: false, fluid: false, emissive: 0 },
 };
 
 export const HOTBAR_BLOCKS = [
   BLOCK.GRASS, BLOCK.DIRT, BLOCK.STONE, BLOCK.SAND,
-  BLOCK.WOOD, BLOCK.PLANKS, BLOCK.GLASS,
+  BLOCK.WOOD, BLOCK.PLANKS, BLOCK.GLASS, BLOCK.OBSIDIAN,
 ];
 
 export function isSolid(id) {
@@ -356,6 +360,26 @@ export function buildAtlas() {
       c.fillRect(0, y, 1, 1);
       c.fillRect(TILE - 1, y + 2, 1, 1);
     }
+  });
+
+  // obsidian - very dark, glassy black with deep purple highlights
+  fillTile(ctx, 0, 4, c => {
+    noisePaint(c, [22, 12, 30], 14, 60);
+    speckle(c, [10, 5, 18], 30, 61);
+    speckle(c, [60, 30, 90], 8, 62);
+    // glassy reflections (a few angled lines)
+    c.strokeStyle = 'rgba(140, 100, 200, 0.45)';
+    c.lineWidth = 1;
+    const r = rng(63);
+    for (let i = 0; i < 3; i++) {
+      const x0 = (r() * TILE) | 0, y0 = (r() * TILE) | 0;
+      const x1 = x0 + ((r() - 0.5) * 8) | 0;
+      const y1 = y0 + ((r() - 0.5) * 8) | 0;
+      c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke();
+    }
+    // tiny bright pinpoints
+    c.fillStyle = 'rgba(170,130,230,0.9)';
+    for (let i = 0; i < 2; i++) c.fillRect((r() * TILE) | 0, (r() * TILE) | 0, 1, 1);
   });
 
   // lava - bright orange with hot streaks (slight transparency to glow against fog)

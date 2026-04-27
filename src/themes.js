@@ -4,16 +4,21 @@ import { BLOCK } from './blocks.js';
 // BIOMES
 // =============================================================================
 // Each biome describes how a single column should look (surface block, fluid,
-// height noise, trees). Multi-biome worlds compose them via a low-frequency
-// noise over (x, z).
-// All biomes share the same sea level and similar height frequencies so they
-// can be blended smoothly. Differences come mainly from amplitude, offset,
-// surface blocks and fluid.
+// height noise, trees). Multi-biome worlds compose them along a single
+// temperature axis T, with volcanic carved out of desert by a secondary noise.
+//
+// Logic:
+//   T < -0.25  -> tundra (snowy, ice lakes)
+//   -0.25 < T < 0.35 -> forest / plains (default)
+//   T > 0.35   -> desert (sand, cactus, dunes)
+//   inside desert, a separate "volcanic" noise patches in lava + obsidian
+//
+// All biomes share the same sea level so coastlines align. Differences come
+// from height amplitude, offset, surface blocks, fluid and trees.
 export const BIOMES = {
   forest: {
     id: 'forest',
-    // Climate position in (temperature, moisture) space, both in [-1, 1].
-    climate: { T: -0.05, M: 0.5 },
+    T: 0.0, // central temperate band
     seaLevel: 24,
     heightAmp: [8, 4, 9],
     heightFreq: [0.015, 0.05, 0.005],
@@ -24,7 +29,7 @@ export const BIOMES = {
   },
   desert: {
     id: 'desert',
-    climate: { T: 0.7, M: -0.5 },
+    T: 0.7, // hot
     seaLevel: 24,
     heightAmp: [9, 3, 6],
     heightFreq: [0.014, 0.05, 0.004],
@@ -35,7 +40,7 @@ export const BIOMES = {
   },
   tundra: {
     id: 'tundra',
-    climate: { T: -0.7, M: 0.1 },
+    T: -0.7, // cold
     seaLevel: 24,
     heightAmp: [6, 3, 7],
     heightFreq: [0.015, 0.05, 0.005],
@@ -46,7 +51,9 @@ export const BIOMES = {
   },
   volcanic: {
     id: 'volcanic',
-    climate: { T: 0.55, M: 0.7 },
+    // Volcanic lives INSIDE desert (same T) but is gated by a secondary noise
+    // so it appears as patches in hot regions only.
+    T: 0.7,
     seaLevel: 24,
     heightAmp: [11, 5, 6],
     heightFreq: [0.017, 0.06, 0.006],
@@ -74,7 +81,7 @@ export const THEMES = {
     accent: '#ffb86b',
     seed: 'faction-2026',
     multiBiome: true,
-    biomeFreq: 0.004, // very low frequency = wide biome regions
+    biomeFreq: 0.0018, // very low frequency = wide biome regions (~550 blocks)
     sky: { rayleigh: 1.9, mieG: 0.83, turbidity: 9 },
     fog: { day: 0xb8d0e8, warm: 0xff9c6e, night: 0x070b1a },
     light: { hemiTop: 0xcfdcf0, hemiBottom: 0x6a4a2a, ambient: 0x2a2a30, sunHueShift: 0 },
@@ -89,7 +96,7 @@ export const THEMES = {
     accent: '#bfa980',
     seed: 'minage-2026',
     multiBiome: true,
-    biomeFreq: 0.005,
+    biomeFreq: 0.0022,
     sky: { rayleigh: 1.8, mieG: 0.8, turbidity: 8 },
     fog: { day: 0xc8d6e6, warm: 0xff9c6e, night: 0x080a14 },
     light: { hemiTop: 0xd8e2f0, hemiBottom: 0x4a3a2a, ambient: 0x252530, sunHueShift: 0 },
