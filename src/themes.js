@@ -100,7 +100,7 @@ export const THEMES = {
     sky: { rayleigh: 1.8, mieG: 0.8, turbidity: 8 },
     fog: { day: 0xc8d6e6, warm: 0xff9c6e, night: 0x080a14 },
     light: { hemiTop: 0xd8e2f0, hemiBottom: 0x4a3a2a, ambient: 0x252530, sunHueShift: 0 },
-    hotbar: [BLOCK.STONE, BLOCK.DIRT, BLOCK.GRASS, BLOCK.WOOD, BLOCK.PLANKS, BLOCK.SAND, BLOCK.SNOW, BLOCK.GLASS, BLOCK.BEDROCK],
+    hotbar: [BLOCK.STONE, BLOCK.DIRT, BLOCK.GRASS, BLOCK.WOOD, BLOCK.PLANKS, BLOCK.SAND, BLOCK.SNOW, BLOCK.GLASS, BLOCK.OBSIDIAN],
   },
   event: {
     id: 'event',

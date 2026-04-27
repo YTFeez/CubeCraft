@@ -1,5 +1,9 @@
 import * as THREE from 'three';
-import { BLOCK, HOTBAR_BLOCKS, BLOCK_INFO, isSolid, isFluidSource, blockIconDataURL } from './blocks.js';
+import {
+  BLOCK, HOTBAR_BLOCKS, BLOCK_INFO, isSolid, isFluidSource, blockIconDataURL,
+  breakTimeSeconds, canHarvestBlock, dropIdForBlock, isPlaceable,
+} from './blocks.js';
+import { CRAFT_RECIPES, canCraft, craftInto } from './crafting.js';
 
 const REACH = 6;
 const HOTBAR_SIZE = 9;
@@ -46,6 +50,9 @@ export class Interaction {
     this.carried = null; // { id, count } | null
     this.invOpen = false;
 
+    /** @type {{ x:number,y:number,z:number,id:number,progress:number } | null} */
+    this._mining = null;
+
     this.raycaster = new THREE.Raycaster();
     this.raycaster.far = REACH;
 
@@ -56,6 +63,8 @@ export class Interaction {
     window.addEventListener('wheel', e => this._onWheel(e), { passive: true });
     window.addEventListener('keydown', e => this._onKeyDown(e));
     window.addEventListener('mousedown', e => this._onMouseDown(e));
+    window.addEventListener('mouseup', e => this._onMouseUp(e));
+    window.addEventListener('mouseleave', () => this._cancelMining());
     window.addEventListener('mousemove', e => this._onMouseMove(e));
   }
 
@@ -80,6 +89,14 @@ export class Interaction {
           slots[i] = { id: s.id, count: Math.min(STACK_MAX, s.count | 0) };
         }
       }
+    }
+    // Premier monde / nouveau joueur : kit de départ survie (pioche + bois pour crafter).
+    const hasAnything = slots.some(s => s && isFinite(s.count) && s.count > 0);
+    if (!hasAnything) {
+      slots[0] = { id: BLOCK.WOODEN_PICKAXE, count: 1 };
+      slots[1] = { id: BLOCK.PLANKS, count: 12 };
+      slots[2] = { id: BLOCK.WOOD, count: 8 };
+      slots[3] = { id: BLOCK.STICK, count: 4 };
     }
     return slots;
   }
@@ -154,6 +171,7 @@ export class Interaction {
           <div class="inv-grid" id="inv-main"></div>
           <div class="inv-sep"></div>
           <div class="inv-hotbar" id="inv-hotbar"></div>
+          <div id="inv-craft" class="inv-craft hidden"></div>
           <div class="inv-palette-wrap hidden" id="inv-palette-wrap">
             <div class="inv-palette-title">Palette créative — clic pour prendre un stack de 64</div>
             <div class="inv-palette" id="inv-palette"></div>
@@ -208,6 +226,20 @@ export class Interaction {
       this._invPaletteWrap.classList.add('hidden');
     }
 
+    this._invCraftEl = overlay.querySelector('#inv-craft');
+    if (!this._invCraftEl) {
+      const panel = overlay.querySelector('.inv-panel');
+      const hint = panel?.querySelector('.hint');
+      if (panel && hint) {
+        const craft = document.createElement('div');
+        craft.id = 'inv-craft';
+        craft.className = 'inv-craft';
+        panel.insertBefore(craft, hint);
+        this._invCraftEl = craft;
+      }
+    }
+    this._buildCraftingList();
+
     // Click outside the panel: drop the carried stack back into the world.
     overlay.addEventListener('mousedown', (e) => {
       if (e.target === overlay) {
@@ -220,6 +252,79 @@ export class Interaction {
         }
       }
     });
+  }
+
+  _buildCraftingList() {
+    const wrap = this._invCraftEl;
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    if (this.mode !== 'survival') {
+      wrap.classList.add('hidden');
+      return;
+    }
+    wrap.classList.remove('hidden');
+    const title = document.createElement('div');
+    title.className = 'inv-palette-title';
+    title.textContent = 'Fabrication (consomme les ressources de ton inventaire)';
+    wrap.appendChild(title);
+    for (const r of CRAFT_RECIPES) {
+      const row = document.createElement('div');
+      row.className = 'craft-row';
+      const name = BLOCK_INFO[r.out.id]?.name || r.id;
+      const txt = document.createElement('span');
+      txt.className = 'craft-name';
+      txt.textContent = `${name} ×${r.out.count}`;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'craft-btn';
+      btn.textContent = 'Fabriquer';
+      btn.disabled = !canCraft(this.slots, r);
+      btn.addEventListener('click', () => {
+        if (!craftInto(this.slots, r)) return;
+        this._refreshHotbarDOM();
+        this._refreshInventoryDOM();
+        this._buildCraftingList();
+        if (this.onInventoryChange) this.onInventoryChange();
+      });
+      row.appendChild(txt);
+      row.appendChild(btn);
+      wrap.appendChild(row);
+    }
+  }
+
+  _setMineBar(p) {
+    const bar = document.getElementById('mine-bar');
+    const fill = document.getElementById('mine-fill');
+    if (!bar || !fill) return;
+    if (p <= 0 || !this._mining) {
+      bar.classList.add('hidden');
+      fill.style.width = '0%';
+      return;
+    }
+    bar.classList.remove('hidden');
+    fill.style.width = `${Math.min(100, p * 100)}%`;
+  }
+
+  _cancelMining() {
+    this._mining = null;
+    this._setMineBar(0);
+  }
+
+  _finishMining(m, handId) {
+    const { x, y, z, id } = m;
+    this._cancelMining();
+    if (id === BLOCK.BEDROCK) return;
+    if (BLOCK_INFO[id]?.fluid) return;
+    this.world.setBlock(x, y, z, BLOCK.AIR);
+    this.audio?.playBreak(id);
+    this.onBreak?.(x, y, z, id);
+    this.onEdit?.(x, y, z, BLOCK.AIR);
+    this._propagateFluids(x, y, z);
+    this.onChange?.();
+    if (this.mode === 'survival' && canHarvestBlock(id, handId)) {
+      const drop = dropIdForBlock(id);
+      if (drop && !NO_DROP.has(drop)) this.addBlock(drop, 1);
+    }
   }
 
   _buildInvSlotEl(globalIdx) {
@@ -276,14 +381,17 @@ export class Interaction {
 
   openInventory() {
     if (this.invOpen) return;
+    this._cancelMining();
     this.invOpen = true;
     this._invOverlayEl.classList.remove('hidden');
     this._refreshInventoryDOM();
+    this._buildCraftingList();
     if (document.pointerLockElement) document.exitPointerLock();
   }
 
   closeInventory() {
     if (!this.invOpen) return;
+    this._cancelMining();
     this.invOpen = false;
     this._invOverlayEl.classList.add('hidden');
     // If the cursor is still holding a stack, try to auto-stow it. In creative
@@ -461,7 +569,34 @@ export class Interaction {
 
   selectedBlock() {
     const s = this.slots[this.selectedIndex];
-    return s && s.count > 0 ? s.id : null;
+    if (!s || s.count <= 0) return null;
+    if (!isPlaceable(s.id)) return null;
+    return s.id;
+  }
+
+  /** Mise à jour du minage en survie (appelée depuis la boucle de jeu). */
+  updateMining(dt) {
+    if (this.mode !== 'survival') return;
+    if (!this._mining) return;
+    if (this.invOpen || this.player.dead || !this.player.locked) {
+      this._cancelMining();
+      return;
+    }
+    const m = this._mining;
+    const hit = this._raycast();
+    const handId = this.slots[this.selectedIndex]?.id;
+    if (!hit || hit.block.x !== m.x || hit.block.y !== m.y || hit.block.z !== m.z || hit.block.id !== m.id) {
+      this._cancelMining();
+      return;
+    }
+    const dur = breakTimeSeconds(m.id, handId);
+    if (!isFinite(dur) || dur <= 0) {
+      this._cancelMining();
+      return;
+    }
+    m.progress += dt / dur;
+    this._setMineBar(m.progress);
+    if (m.progress >= 1) this._finishMining(m, handId);
   }
 
   // ---------------------------------------------------------------------------
@@ -523,6 +658,7 @@ export class Interaction {
   }
 
   setMode(mode, inventory) {
+    this._cancelMining();
     this.mode = mode === 'survival' ? 'survival' : 'creative';
     this.slots = this._buildInitialSlots(inventory);
     this._refreshHotbarDOM();
@@ -579,6 +715,12 @@ export class Interaction {
     }
   }
 
+  _onMouseUp() {
+    if (this.mode === 'survival' && this._mining && this._mining.progress < 1) {
+      this._cancelMining();
+    }
+  }
+
   _onMouseDown(e) {
     if (this.invOpen) return; // click handling is per-slot inside the overlay
     if (!this.player.locked) return;
@@ -588,15 +730,23 @@ export class Interaction {
 
     if (e.button === 0) {
       const { x, y, z, id } = hit.block;
-      if (id === BLOCK.BEDROCK) return;
+      if (id === BLOCK.BEDROCK || BLOCK_INFO[id]?.unbreakable) return;
       if (BLOCK_INFO[id]?.fluid) return;
-      this.world.setBlock(x, y, z, BLOCK.AIR);
-      this.audio?.playBreak(id);
-      this.onBreak?.(x, y, z, id);
-      this.onEdit?.(x, y, z, BLOCK.AIR);
-      this._propagateFluids(x, y, z);
-      this.onChange?.();
-      if (this.mode === 'survival') this.addBlock(id, 1);
+      if (this.mode === 'creative') {
+        this.world.setBlock(x, y, z, BLOCK.AIR);
+        this.audio?.playBreak(id);
+        this.onBreak?.(x, y, z, id);
+        this.onEdit?.(x, y, z, BLOCK.AIR);
+        this._propagateFluids(x, y, z);
+        this.onChange?.();
+        return;
+      }
+      // Survie : minage progressif (maintenir le clic gauche).
+      const handId = this.slots[this.selectedIndex]?.id;
+      const dur = breakTimeSeconds(id, handId);
+      if (!isFinite(dur)) return;
+      this._mining = { x, y, z, id, progress: 0 };
+      this._setMineBar(0.01);
     } else if (e.button === 2) {
       const id = this.selectedBlock();
       if (id == null) return;

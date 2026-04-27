@@ -808,3 +808,63 @@ button.danger {
   border: 1px solid rgba(255, 120, 130, 0.4);
 }
 button.danger:hover { background: rgba(220, 60, 70, 0.95); }
+
+
+/* Mining progress (survival) */
+.mine-bar {
+  position: fixed;
+  bottom: 104px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(220px, 55vw);
+  height: 8px;
+  background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 4px;
+  overflow: hidden;
+  z-index: 6;
+  pointer-events: none;
+}
+.mine-bar.hidden { display: none; }
+#mine-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #ffd166, #7fd87f);
+  transition: width 0.04s linear;
+}
+
+/* Crafting list inside inventory */
+.inv-craft {
+  margin-top: 12px;
+  text-align: left;
+  max-height: 180px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.inv-craft.hidden { display: none; }
+.craft-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  background: rgba(0,0,0,0.35);
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.craft-name { font-size: 13px; opacity: 0.92; }
+.craft-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(100, 180, 120, 0.5);
+  color: #fff;
+  cursor: pointer;
+}
+.craft-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.craft-btn:not(:disabled):hover { background: rgba(120, 210, 140, 0.75); }

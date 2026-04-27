@@ -19,11 +19,25 @@ export const BLOCK = {
   OBSIDIAN: 15,
   WATER_FLOW: 16,
   LAVA_FLOW: 17,
+  // --- Survival: ores, items, tools (tile row 5+ in atlas) ---
+  COAL_ORE: 18,
+  IRON_ORE: 19,
+  GOLD_ORE: 20,
+  DIAMOND_ORE: 21,
+  STICK: 22,
+  COAL: 23,
+  IRON_INGOT: 24,
+  GOLD_INGOT: 25,
+  DIAMOND: 26,
+  WOODEN_PICKAXE: 27,
+  STONE_PICKAXE: 28,
+  IRON_PICKAXE: 29,
+  DIAMOND_PICKAXE: 30,
 };
 
 const TILE = 16;
 const ATLAS_COLS = 4;
-const ATLAS_ROWS = 5;
+const ATLAS_ROWS = 9;
 
 // Tile index in the atlas (col + row * ATLAS_COLS). 4x5 grid:
 //  0 grass_top    1 grass_side  2 dirt        3 stone
@@ -51,26 +65,54 @@ const FACE_TILES = {
   // distinction is only used by gameplay (you can't break/replace sources).
   [BLOCK.WATER_FLOW]: { top: 11, bottom: 11, side: 11 },
   [BLOCK.LAVA_FLOW]:  { top: 15, bottom: 15, side: 15 },
+  [BLOCK.COAL_ORE]:     { top: 20, bottom: 20, side: 20 },
+  [BLOCK.IRON_ORE]:     { top: 21, bottom: 21, side: 21 },
+  [BLOCK.GOLD_ORE]:     { top: 22, bottom: 22, side: 22 },
+  [BLOCK.DIAMOND_ORE]:  { top: 23, bottom: 23, side: 23 },
+  [BLOCK.STICK]:        { top: 24, bottom: 24, side: 24 },
+  [BLOCK.COAL]:         { top: 25, bottom: 25, side: 25 },
+  [BLOCK.IRON_INGOT]:   { top: 26, bottom: 26, side: 26 },
+  [BLOCK.GOLD_INGOT]:   { top: 27, bottom: 27, side: 27 },
+  [BLOCK.DIAMOND]:      { top: 28, bottom: 28, side: 28 },
+  [BLOCK.WOODEN_PICKAXE]:  { top: 29, bottom: 29, side: 29 },
+  [BLOCK.STONE_PICKAXE]:   { top: 30, bottom: 30, side: 30 },
+  [BLOCK.IRON_PICKAXE]:    { top: 31, bottom: 31, side: 31 },
+  [BLOCK.DIAMOND_PICKAXE]: { top: 32, bottom: 32, side: 32 },
 };
 
+// hardness = secondes de base (main ou bon outil bas) · harvestLevel 0 = main OK,
+// 1 = pioche bois+, 2 = pierre+, 3 = fer+, 4 = diamant+ (pour obsidienne / minerai diamant)
 export const BLOCK_INFO = {
-  [BLOCK.GRASS]:   { name: 'Herbe',    solid: true, transparent: false, fluid: false, emissive: 0 },
-  [BLOCK.DIRT]:    { name: 'Terre',    solid: true, transparent: false, fluid: false, emissive: 0 },
-  [BLOCK.STONE]:   { name: 'Pierre',   solid: true, transparent: false, fluid: false, emissive: 0 },
-  [BLOCK.SAND]:    { name: 'Sable',    solid: true, transparent: false, fluid: false, emissive: 0 },
-  [BLOCK.WOOD]:    { name: 'Bois',     solid: true, transparent: false, fluid: false, emissive: 0 },
-  [BLOCK.LEAVES]:  { name: 'Feuilles', solid: true, transparent: true,  fluid: false, emissive: 0 },
-  [BLOCK.PLANKS]:  { name: 'Planches', solid: true, transparent: false, fluid: false, emissive: 0 },
-  [BLOCK.GLASS]:   { name: 'Verre',    solid: true, transparent: true,  fluid: false, emissive: 0 },
-  [BLOCK.BEDROCK]: { name: 'Socle',    solid: true, transparent: false, fluid: false, emissive: 0 },
+  [BLOCK.GRASS]:   { name: 'Herbe',    solid: true, transparent: false, fluid: false, emissive: 0, placeable: true,  hardness: 0.1,  harvestLevel: 0, harvestTool: null },
+  [BLOCK.DIRT]:    { name: 'Terre',    solid: true, transparent: false, fluid: false, emissive: 0, placeable: true,  hardness: 0.12, harvestLevel: 0, harvestTool: null },
+  [BLOCK.STONE]:   { name: 'Pierre',   solid: true, transparent: false, fluid: false, emissive: 0, placeable: true,  hardness: 0.38, harvestLevel: 1, harvestTool: 'pickaxe' },
+  [BLOCK.SAND]:    { name: 'Sable',    solid: true, transparent: false, fluid: false, emissive: 0, placeable: true,  hardness: 0.12, harvestLevel: 0, harvestTool: null },
+  [BLOCK.WOOD]:    { name: 'Bois',     solid: true, transparent: false, fluid: false, emissive: 0, placeable: true,  hardness: 0.32, harvestLevel: 0, harvestTool: null },
+  [BLOCK.LEAVES]:  { name: 'Feuilles', solid: true, transparent: true,  fluid: false, emissive: 0, placeable: true,  hardness: 0.08, harvestLevel: 0, harvestTool: null },
+  [BLOCK.PLANKS]:  { name: 'Planches', solid: true, transparent: false, fluid: false, emissive: 0, placeable: true,  hardness: 0.2,  harvestLevel: 0, harvestTool: null },
+  [BLOCK.GLASS]:   { name: 'Verre',    solid: true, transparent: true,  fluid: false, emissive: 0, placeable: true,  hardness: 0.15, harvestLevel: 0, harvestTool: null },
+  [BLOCK.BEDROCK]: { name: 'Socle',    solid: true, transparent: false, fluid: false, emissive: 0, placeable: false, hardness: 999, harvestLevel: 99, harvestTool: 'pickaxe', unbreakable: true },
   [BLOCK.WATER]:   { name: 'Eau',      solid: true, transparent: true,  fluid: true,  emissive: 0, source: true },
-  [BLOCK.SNOW]:    { name: 'Neige',    solid: true, transparent: false, fluid: false, emissive: 0 },
-  [BLOCK.ICE]:     { name: 'Glace',    solid: true, transparent: true,  fluid: false, emissive: 0 },
-  [BLOCK.CACTUS]:  { name: 'Cactus',   solid: true, transparent: false, fluid: false, emissive: 0 },
+  [BLOCK.SNOW]:    { name: 'Neige',    solid: true, transparent: false, fluid: false, emissive: 0, placeable: true,  hardness: 0.1,  harvestLevel: 0, harvestTool: null },
+  [BLOCK.ICE]:     { name: 'Glace',    solid: true, transparent: true,  fluid: false, emissive: 0, placeable: true,  hardness: 0.35, harvestLevel: 0, harvestTool: null },
+  [BLOCK.CACTUS]:  { name: 'Cactus',   solid: true, transparent: false, fluid: false, emissive: 0, placeable: true,  hardness: 0.12, harvestLevel: 0, harvestTool: null },
   [BLOCK.LAVA]:    { name: 'Lave',     solid: true, transparent: true,  fluid: true,  emissive: 1, source: true },
-  [BLOCK.OBSIDIAN]:{ name: 'Obsidienne',solid: true, transparent: false, fluid: false, emissive: 0 },
+  [BLOCK.OBSIDIAN]:{ name: 'Obsidienne',solid: true, transparent: false, fluid: false, emissive: 0, placeable: true,  hardness: 6.5, harvestLevel: 4, harvestTool: 'pickaxe' },
   [BLOCK.WATER_FLOW]:{ name: 'Eau coulante', solid: true, transparent: true, fluid: true, emissive: 0, source: false },
   [BLOCK.LAVA_FLOW]: { name: 'Lave coulante',solid: true, transparent: true, fluid: true, emissive: 0.7, source: false },
+  [BLOCK.COAL_ORE]:    { name: 'Minerai de charbon', solid: true, transparent: false, fluid: false, emissive: 0, placeable: true, hardness: 0.42, harvestLevel: 1, harvestTool: 'pickaxe', dropId: BLOCK.COAL },
+  [BLOCK.IRON_ORE]:    { name: 'Minerai de fer',     solid: true, transparent: false, fluid: false, emissive: 0, placeable: true, hardness: 0.55, harvestLevel: 2, harvestTool: 'pickaxe' },
+  [BLOCK.GOLD_ORE]:    { name: 'Minerai d\'or',      solid: true, transparent: false, fluid: false, emissive: 0, placeable: true, hardness: 0.5,  harvestLevel: 2, harvestTool: 'pickaxe' },
+  [BLOCK.DIAMOND_ORE]: { name: 'Minerai de diamant', solid: true, transparent: false, fluid: false, emissive: 0, placeable: true, hardness: 0.7,  harvestLevel: 3, harvestTool: 'pickaxe', dropId: BLOCK.DIAMOND },
+  [BLOCK.STICK]:       { name: 'Bâton',            solid: true, transparent: false, fluid: false, emissive: 0, placeable: false, hardness: 0 },
+  [BLOCK.COAL]:        { name: 'Charbon',          solid: true, transparent: false, fluid: false, emissive: 0, placeable: false, hardness: 0 },
+  [BLOCK.IRON_INGOT]:  { name: 'Lingot de fer',    solid: true, transparent: false, fluid: false, emissive: 0, placeable: false, hardness: 0 },
+  [BLOCK.GOLD_INGOT]:  { name: 'Lingot d\'or',     solid: true, transparent: false, fluid: false, emissive: 0, placeable: false, hardness: 0 },
+  [BLOCK.DIAMOND]:     { name: 'Diamant',          solid: true, transparent: false, fluid: false, emissive: 0, placeable: false, hardness: 0 },
+  [BLOCK.WOODEN_PICKAXE]:  { name: 'Pioche en bois',   solid: true, transparent: false, fluid: false, emissive: 0, placeable: false, pickaxeTier: 1, hardness: 0 },
+  [BLOCK.STONE_PICKAXE]:   { name: 'Pioche en pierre', solid: true, transparent: false, fluid: false, emissive: 0, placeable: false, pickaxeTier: 2, hardness: 0 },
+  [BLOCK.IRON_PICKAXE]:    { name: 'Pioche en fer',    solid: true, transparent: false, fluid: false, emissive: 0, placeable: false, pickaxeTier: 3, hardness: 0 },
+  [BLOCK.DIAMOND_PICKAXE]: { name: 'Pioche en diamant',solid: true, transparent: false, fluid: false, emissive: 0, placeable: false, pickaxeTier: 4, hardness: 0 },
 };
 
 export const HOTBAR_BLOCKS = [
@@ -99,6 +141,44 @@ export function fluidGroup(id) {
   if (id === BLOCK.WATER || id === BLOCK.WATER_FLOW) return 'water';
   if (id === BLOCK.LAVA  || id === BLOCK.LAVA_FLOW)  return 'lava';
   return null;
+}
+
+/** Niveau de pioche en main (0 = pas une pioche / main nue pour la vitesse). */
+export function pickaxeTierInHand(handId) {
+  const t = BLOCK_INFO[handId]?.pickaxeTier;
+  return typeof t === 'number' && t > 0 ? t : 0;
+}
+
+/** Temps en secondes pour casser ce bloc avec l'objet en main. Infinity si impossible. */
+export function breakTimeSeconds(blockId, handId) {
+  const b = BLOCK_INFO[blockId];
+  if (!b || b.unbreakable) return Infinity;
+  const base = typeof b.hardness === 'number' ? b.hardness : 0.2;
+  if (base >= 900) return Infinity;
+  const need = b.harvestLevel ?? 0;
+  const tool = b.harvestTool;
+  const pickTier = pickaxeTierInHand(handId);
+  if (tool === 'pickaxe' && need > 0 && pickTier < need) return Infinity;
+  if (tool === 'pickaxe' && need > 0) {
+    return Math.max(0.07, base / (0.48 + pickTier * 0.42));
+  }
+  return Math.max(0.05, base / (pickTier > 0 ? 1.12 : 1));
+}
+
+/** Si la casse donne un drop (bon niveau d'outil pour les minerais). */
+export function canHarvestBlock(blockId, handId) {
+  return breakTimeSeconds(blockId, handId) !== Infinity;
+}
+
+export function dropIdForBlock(blockId) {
+  const d = BLOCK_INFO[blockId]?.dropId;
+  return typeof d === 'number' ? d : blockId;
+}
+
+export function isPlaceable(id) {
+  if (!id || id === BLOCK.AIR) return false;
+  const p = BLOCK_INFO[id]?.placeable;
+  return p !== false;
 }
 
 // ---------- Procedural atlas ----------
@@ -420,6 +500,81 @@ export function buildAtlas() {
       }
       c.stroke();
     }
+  });
+
+  // --- Row 5: ores (tiles 20–23) ---
+  fillTile(ctx, 0, 5, c => {
+    noisePaint(c, [70, 70, 75], 18, 201);
+    speckle(c, [20, 20, 22], 40, 202);
+    speckle(c, [30, 30, 35], 20, 203);
+    speckle(c, [15, 15, 18], 25, 204);
+  });
+  fillTile(ctx, 1, 5, c => {
+    noisePaint(c, [110, 88, 78], 16, 211);
+    speckle(c, [160, 120, 100], 18, 212);
+    speckle(c, [60, 45, 40], 22, 213);
+  });
+  fillTile(ctx, 2, 5, c => {
+    noisePaint(c, [140, 120, 55], 18, 221);
+    speckle(c, [200, 180, 80], 16, 222);
+    speckle(c, [90, 75, 30], 20, 223);
+  });
+  fillTile(ctx, 3, 5, c => {
+    noisePaint(c, [70, 120, 110], 14, 231);
+    speckle(c, [180, 255, 250], 10, 232);
+    speckle(c, [40, 90, 85], 18, 233);
+  });
+  // Row 6: stick, coal lump, iron ingot, gold ingot (24–27)
+  fillTile(ctx, 0, 6, c => {
+    noisePaint(c, [120, 85, 45], 10, 241);
+    c.fillStyle = 'rgba(80,55,30,0.9)';
+    c.fillRect(6, 2, 4, 12);
+    c.fillRect(6, 12, 4, 2);
+  });
+  fillTile(ctx, 1, 6, c => {
+    noisePaint(c, [35, 35, 38], 12, 251);
+    speckle(c, [10, 10, 12], 30, 252);
+  });
+  fillTile(ctx, 2, 6, c => {
+    noisePaint(c, [160, 150, 155], 10, 261);
+    speckle(c, [200, 190, 195], 12, 262);
+    speckle(c, [120, 110, 115], 14, 263);
+  });
+  fillTile(ctx, 3, 6, c => {
+    noisePaint(c, [200, 175, 70], 12, 271);
+    speckle(c, [255, 230, 120], 14, 272);
+  });
+  // Row 7: diamond, wood / stone / iron pick heads (28–31)
+  fillTile(ctx, 0, 7, c => {
+    noisePaint(c, [120, 220, 230], 12, 281);
+    speckle(c, [200, 255, 255], 12, 282);
+    speckle(c, [60, 140, 150], 10, 283);
+  });
+  fillTile(ctx, 1, 7, c => {
+    noisePaint(c, [140, 100, 55], 8, 291);
+    c.fillStyle = '#5a4030';
+    c.fillRect(2, 4, 12, 3);
+    c.fillRect(6, 7, 2, 8);
+  });
+  fillTile(ctx, 2, 7, c => {
+    noisePaint(c, [115, 115, 120], 10, 301);
+    c.fillStyle = '#4a4a50';
+    c.fillRect(2, 4, 12, 3);
+    c.fillRect(6, 7, 2, 8);
+  });
+  fillTile(ctx, 3, 7, c => {
+    noisePaint(c, [150, 130, 125], 10, 311);
+    c.fillStyle = '#8b6914';
+    c.fillRect(2, 4, 12, 3);
+    c.fillRect(6, 7, 2, 8);
+  });
+  // Row 8: diamond pick (tile 32)
+  fillTile(ctx, 0, 8, c => {
+    noisePaint(c, [40, 45, 55], 10, 321);
+    c.fillStyle = '#2ee8d8';
+    c.fillRect(2, 4, 12, 3);
+    c.fillRect(6, 7, 2, 8);
+    speckle(c, [200, 255, 250], 6, 322);
   });
 
   const texture = new THREE.CanvasTexture(canvas);

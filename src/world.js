@@ -624,6 +624,60 @@ export class Chunk {
         this._growTree(tcfg.type, tx, h, tz, chRand);
       }
     }
+
+    // Caves + ore veins (survival worlds only; deterministic from seed + chunk).
+    if (theme.mode === 'survival' && !theme.flat) {
+      this._carveCavesAndOres(heights, origin);
+    }
+  }
+
+  /**
+   * 3D worm noise carves air pockets; then sparse ores replace stone only.
+   */
+  _carveCavesAndOres(heights, origin) {
+    const w = this.world;
+    const nh = (wx, wy, wz) => w.noise3D(wx * 0.043, wy * 0.062, wz * 0.041);
+    const nh2 = (wx, wy, wz) => w.noise3D(wx * 0.11 + 400, wy * 0.09 + 200, wz * 0.11 - 300);
+    const nh3 = (wx, wy, wz) => w.noise3D(wx * 0.021, wy * 0.028, wz * 0.021);
+    for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+      for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+        const wx = origin[0] + lx;
+        const wz = origin[1] + lz;
+        const height = heights[lz * CHUNK_SIZE + lx];
+        const maxY = Math.min(height + 14, WORLD_HEIGHT - 4);
+        for (let y = 4; y < maxY; y++) {
+          const id = this.get(lx, y, lz);
+          if (id === BLOCK.BEDROCK || id === BLOCK.AIR) continue;
+          if (id === BLOCK.WATER || id === BLOCK.LAVA || id === BLOCK.ICE) continue;
+          const n1 = nh(wx, y, wz);
+          const n2 = nh2(wx, y, wz);
+          const worm = n1 > 0.38 && n2 < 0.56;
+          const chamber = nh3(wx, y, wz) > 0.58;
+          if ((worm || chamber) && (y < height - 2 || y < SEA_LEVEL - 3)) {
+            this.set(lx, y, lz, BLOCK.AIR);
+          }
+        }
+      }
+    }
+
+    const rOre = mulberry32(
+      (hashStr(w.seed) ^ (this.cx * 9973) ^ (this.cz * 9109)) >>> 0
+    );
+    for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+      for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+        const wx = origin[0] + lx;
+        const wz = origin[1] + lz;
+        for (let y = 3; y < WORLD_HEIGHT - 3; y++) {
+          if (this.get(lx, y, lz) !== BLOCK.STONE) continue;
+          const v = w.noise3D(wx * 0.09 + 777, y * 0.11, wz * 0.09 - 555);
+          const v2 = w.noise3D(wx * 0.07 - 222, y * 0.08, wz * 0.07 + 888);
+          if (y < 44 && y > 6 && v > 0.78 && rOre() < 0.11) this.set(lx, y, lz, BLOCK.COAL_ORE);
+          else if (y < 36 && y > 8 && v2 > 0.81 && rOre() < 0.07) this.set(lx, y, lz, BLOCK.IRON_ORE);
+          else if (y < 28 && y > 6 && v > 0.83 && v2 > 0.72 && rOre() < 0.045) this.set(lx, y, lz, BLOCK.GOLD_ORE);
+          else if (y < 14 && y > 5 && v + v2 > 1.52 && rOre() < 0.035) this.set(lx, y, lz, BLOCK.DIAMOND_ORE);
+        }
+      }
+    }
   }
 
   _isTreeSiteOk(tx, h, tz, biome) {

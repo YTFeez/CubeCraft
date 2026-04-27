@@ -895,6 +895,7 @@ function animate() {
   s.world.flushDirty(2);
 
   s.interaction.updateHighlight();
+  s.interaction.updateMining(dt);
   s.particles.update(dt);
   s.remotePlayers.update(dt);
   if (s.player.locked && !s.player.dead) {
