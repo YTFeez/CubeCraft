@@ -350,6 +350,18 @@ async function createSession(theme, name) {
       if (typeof m.t === 'number' && session) session.timeOfDay = m.t;
     },
     chat: (m) => addChatLine(m.from, m.text, m.color),
+    system: (m) => addSystemLine(m.text, m.color || '#9aa5b1'),
+    announce: (m) => addAnnounceLine(m.from, m.text),
+    teleport: (m) => {
+      if (!session || typeof m.x !== 'number') return;
+      session.player.position.set(m.x, m.y, m.z);
+      session.player.velocity.set(0, 0, 0);
+    },
+    worldReset: (m) => {
+      if (!session) return;
+      addSystemLine(m.message || 'Monde réinitialisé.', '#ff8080');
+      setTimeout(() => leaveSession(), 600);
+    },
     error: (m) => {
       if (m.code === 'AUTH') {
         clearAuth();
@@ -581,6 +593,28 @@ function addChatLine(from, text, color = '#ffffff') {
   chatLog.appendChild(line);
   while (chatLog.childElementCount > 8) chatLog.removeChild(chatLog.firstChild);
   setTimeout(() => line.remove(), 8200);
+}
+
+function addSystemLine(text, color = '#9aa5b1') {
+  // System messages can be multi-line.
+  const lines = String(text).split('\n');
+  for (const t of lines) {
+    const line = document.createElement('div');
+    line.className = 'chat-line system';
+    line.innerHTML = `<i style="color:${color}">${escapeHtml(t)}</i>`;
+    chatLog.appendChild(line);
+    while (chatLog.childElementCount > 12) chatLog.removeChild(chatLog.firstChild);
+    setTimeout(() => line.remove(), 12000);
+  }
+}
+
+function addAnnounceLine(from, text) {
+  const line = document.createElement('div');
+  line.className = 'chat-line announce';
+  line.innerHTML = `<span class="announce-prefix">★ Annonce de ${escapeHtml(from)}</span><br>${escapeHtml(text)}`;
+  chatLog.appendChild(line);
+  while (chatLog.childElementCount > 12) chatLog.removeChild(chatLog.firstChild);
+  setTimeout(() => line.remove(), 14000);
 }
 
 function escapeHtml(s) {

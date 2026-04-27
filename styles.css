@@ -442,6 +442,35 @@ button.small {
 
 .chat-line .from { font-weight: 700; margin-right: 6px; }
 
+.chat-line.system {
+  background: rgba(0,0,0,0.4);
+  border-left: 3px solid #6ec6ff;
+  padding-left: 10px;
+}
+
+.chat-line.announce {
+  background: linear-gradient(90deg, rgba(255, 121, 198, 0.4), rgba(255, 184, 108, 0.3));
+  border: 1px solid rgba(255, 215, 0, 0.6);
+  padding: 8px 12px;
+  font-size: 14px;
+  text-align: center;
+  animation: announceFlash 14s linear forwards;
+}
+
+.chat-line.announce .announce-prefix {
+  display: block;
+  font-weight: 700;
+  color: #ffd166;
+  font-size: 13px;
+  letter-spacing: 1px;
+  margin-bottom: 2px;
+}
+
+@keyframes announceFlash {
+  0%, 90% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
 @keyframes chatFade {
   0% { opacity: 1; }
   85% { opacity: 1; }

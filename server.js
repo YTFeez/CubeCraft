@@ -18,6 +18,14 @@ const SAVE_INTERVAL_MS = 30_000;
 const DAY_LENGTH_S = 240; // one in-game day = 240 real seconds
 const GLOBAL_TIME_FILE = path.join(SAVE_DIR, '_global-time.json');
 
+// Admin accounts get access to /commands. Default: just "EXE". Override with
+// the ADMIN_USERS env var (comma-separated, e.g. "EXE,Mod1,Mod2").
+const ADMIN_USERS = (process.env.ADMIN_USERS || 'EXE')
+  .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+function isAdmin(username) {
+  return !!username && ADMIN_USERS.includes(username.toLowerCase());
+}
+
 // --- Themes (server only needs id + seed; everything visual is client-side) ---
 const ROOMS = [
   { id: 'faction', name: 'Faction',           seed: 'faction-2026' },
@@ -161,6 +169,172 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 let nextPlayerId = 1;
 const PLAYER_COLORS = ['#ff7676', '#ffd166', '#06d6a0', '#118ab2', '#c77dff', '#f78c6b', '#7bdff2', '#b5ead7'];
 
+// =========================================================================
+// ADMIN COMMANDS
+// =========================================================================
+
+const ADMIN_HELP = [
+  '/help — affiche cette aide',
+  '/list — liste tous les joueurs en ligne (tous les mondes)',
+  '/tp <pseudo> — te téléporte vers ce joueur (même monde)',
+  '/tphere <pseudo> — téléporte ce joueur vers toi (même monde)',
+  '/time <0-23 | day | night | morning | sunset> — règle l\'heure pour tous les mondes',
+  '/say <texte> — message en gold dans le chat de ce monde',
+  '/announce <texte> — message diffusé dans tous les mondes',
+  '/kick <pseudo> — déconnecte ce joueur',
+  '/clear — réinitialise les blocs cassés/posés du monde courant',
+].join('\n');
+
+function sendSystem(send, text, color = '#9aa5b1') {
+  send({ type: 'system', text, color });
+}
+
+function findPlayerInRoom(room, name) {
+  const lower = name.toLowerCase();
+  for (const p of room.players.values()) {
+    if (p.username && p.username.toLowerCase() === lower) return p;
+    if (p.name && p.name.toLowerCase() === lower) return p;
+  }
+  return null;
+}
+
+function findPlayerEverywhere(name) {
+  const lower = name.toLowerCase();
+  for (const r of rooms.values()) {
+    for (const p of r.players.values()) {
+      if (p.username && p.username.toLowerCase() === lower) return { room: r, player: p };
+      if (p.name && p.name.toLowerCase() === lower) return { room: r, player: p };
+    }
+  }
+  return null;
+}
+
+function parseTimeArg(arg) {
+  const a = (arg || '').trim().toLowerCase();
+  if (!a) return null;
+  const presets = {
+    'midnight': 0.0, 'minuit': 0.0, 'night': 0.0, 'nuit': 0.0,
+    'morning': 0.25, 'matin': 0.25, 'sunrise': 0.25, 'aube': 0.25,
+    'noon': 0.5, 'midi': 0.5, 'day': 0.5, 'jour': 0.5,
+    'sunset': 0.75, 'soir': 0.75, 'evening': 0.75, 'crepuscule': 0.75,
+  };
+  if (a in presets) return presets[a];
+  // Accept "13", "13.5", or "13:30"
+  if (/^\d{1,2}:\d{1,2}$/.test(a)) {
+    const [h, m] = a.split(':').map(Number);
+    return ((h + m / 60) / 24) % 1;
+  }
+  const n = parseFloat(a);
+  if (!isNaN(n)) {
+    if (n >= 0 && n < 24) return (n / 24) % 1;
+    if (n >= 0 && n <= 1) return n;
+  }
+  return null;
+}
+
+function broadcastEverywhere(obj) {
+  const text = JSON.stringify(obj);
+  for (const r of rooms.values()) {
+    for (const p of r.players.values()) {
+      if (p.ws.readyState === p.ws.OPEN) p.ws.send(text);
+    }
+  }
+}
+
+function handleCommand(send, broadcast, me, room, body) {
+  const [cmdRaw, ...rest] = body.trim().split(/\s+/);
+  const cmd = (cmdRaw || '').toLowerCase();
+  const arg = rest.join(' ');
+
+  if (cmd === 'help') {
+    if (isAdmin(me.username)) sendSystem(send, ADMIN_HELP);
+    else sendSystem(send, 'Aucune commande disponible (compte non-admin).');
+    return;
+  }
+
+  if (!isAdmin(me.username)) {
+    sendSystem(send, `Commande inconnue: /${cmd}`, '#ff8080');
+    return;
+  }
+
+  switch (cmd) {
+    case 'list': {
+      const lines = [];
+      for (const r of rooms.values()) {
+        if (r.players.size === 0) continue;
+        const names = Array.from(r.players.values()).map(p => p.name).join(', ');
+        lines.push(`[${r.name}] ${r.players.size} : ${names}`);
+      }
+      sendSystem(send, lines.length ? lines.join('\n') : 'Aucun joueur en ligne.', '#9aa5b1');
+      break;
+    }
+    case 'tp': {
+      if (!arg) return sendSystem(send, 'Usage: /tp <pseudo>', '#ff8080');
+      const target = findPlayerInRoom(room, arg);
+      if (!target) return sendSystem(send, `"${arg}" introuvable dans ce monde.`, '#ff8080');
+      send({ type: 'teleport', x: target.x, y: target.y + 0.1, z: target.z });
+      sendSystem(send, `→ Téléporté vers ${target.name}.`, '#7fd87f');
+      break;
+    }
+    case 'tphere': {
+      if (!arg) return sendSystem(send, 'Usage: /tphere <pseudo>', '#ff8080');
+      const target = findPlayerInRoom(room, arg);
+      if (!target) return sendSystem(send, `"${arg}" introuvable dans ce monde.`, '#ff8080');
+      if (target.ws.readyState === target.ws.OPEN) {
+        target.ws.send(JSON.stringify({ type: 'teleport', x: me.x, y: me.y + 0.1, z: me.z }));
+      }
+      sendSystem(send, `→ ${target.name} téléporté vers toi.`, '#7fd87f');
+      break;
+    }
+    case 'time': {
+      const t = parseTimeArg(arg);
+      if (t == null) return sendSystem(send, 'Usage: /time <0-23 | day | night | morning | sunset>', '#ff8080');
+      globalTimeOfDay = t;
+      globalTimeDirty = true;
+      broadcastEverywhere({ type: 'timeSync', t: globalTimeOfDay });
+      const hh = Math.floor(t * 24);
+      const mm = Math.floor((t * 24 - hh) * 60);
+      sendSystem(send, `Heure réglée à ${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')} (tous les mondes).`, '#7fd87f');
+      break;
+    }
+    case 'say': {
+      if (!arg) return;
+      broadcast(room, { type: 'chat', from: me.name + ' [ADMIN]', color: '#ffd166', text: arg });
+      break;
+    }
+    case 'announce': case 'broadcast': {
+      if (!arg) return;
+      broadcastEverywhere({ type: 'announce', from: me.name, text: arg });
+      break;
+    }
+    case 'kick': {
+      if (!arg) return sendSystem(send, 'Usage: /kick <pseudo>', '#ff8080');
+      const found = findPlayerEverywhere(arg);
+      if (!found) return sendSystem(send, `"${arg}" introuvable.`, '#ff8080');
+      try {
+        found.player.ws.send(JSON.stringify({ type: 'system', text: `Tu as été kické par ${me.name}.`, color: '#ff8080' }));
+      } catch {}
+      try { found.player.ws.close(); } catch {}
+      sendSystem(send, `${found.player.name} a été kické.`, '#7fd87f');
+      break;
+    }
+    case 'clear': {
+      const count = Object.values(room.edits).reduce((acc, m) => acc + Object.keys(m).length, 0);
+      room.edits = {};
+      room.dirty = true;
+      // Force everyone in this room to reload their session.
+      const text = JSON.stringify({ type: 'worldReset', message: `${me.name} a réinitialisé "${room.name}".` });
+      for (const p of room.players.values()) {
+        if (p.ws.readyState === p.ws.OPEN) p.ws.send(text);
+      }
+      sendSystem(send, `${count} blocs réinitialisés. Rejoins le monde pour voir le résultat.`, '#7fd87f');
+      break;
+    }
+    default:
+      sendSystem(send, `Commande inconnue: /${cmd}. Tape /help.`, '#ff8080');
+  }
+}
+
 wss.on('connection', (ws) => {
   let playerId = null;
   let room = null;
@@ -282,7 +456,13 @@ wss.on('connection', (ws) => {
       case 'chat': {
         const text = (msg.text || '').toString().slice(0, 200);
         if (!text) return;
-        broadcast(room, { type: 'chat', from: me.name, color: me.color, text });
+        if (text.startsWith('/')) {
+          handleCommand(send, broadcast, me, room, text.slice(1));
+        } else {
+          const adminTag = isAdmin(me.username) ? ' [ADMIN]' : '';
+          const color = isAdmin(me.username) ? '#ffd166' : me.color;
+          broadcast(room, { type: 'chat', from: me.name + adminTag, color, text });
+        }
         break;
       }
       case 'ping': {
