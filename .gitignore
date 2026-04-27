@@ -4,3 +4,6 @@ data/
 *.log
 .DS_Store
 
+# Resource pack copié localement (ex. depuis Téléchargements/Texture) — voir `texture-pack/` à la racine du serveur.
+texture-pack/
+

@@ -3,7 +3,15 @@ import {
   BLOCK, HOTBAR_BLOCKS, BLOCK_INFO, isSolid, isFluidSource, blockIconDataURL,
   breakTimeSeconds, canHarvestBlock, dropIdForBlock, isPlaceable,
 } from './blocks.js';
-import { CRAFT_RECIPES, canCraft, craftInto } from './crafting.js';
+import {
+  RECIPES,
+  hasIngredients,
+  recipeIngredientMap,
+  fillRecipeFromInventory,
+  findMatchingRecipe,
+  craftOnceFromGrid,
+  mergeIntoSlots,
+} from './crafting.js';
 
 const REACH = 6;
 const HOTBAR_SIZE = 9;
@@ -49,6 +57,9 @@ export class Interaction {
     // Slot held by the cursor while the inventory overlay is open.
     this.carried = null; // { id, count } | null
     this.invOpen = false;
+
+    /** @type {({ id: number, count: number } | null)[] | null} Grille 3×3 (survie uniquement). */
+    this.craftGrid = this.mode === 'survival' ? new Array(9).fill(null) : null;
 
     /** @type {{ x:number,y:number,z:number,id:number,progress:number } | null} */
     this._mining = null;
@@ -254,6 +265,21 @@ export class Interaction {
     });
   }
 
+  _stowCraftGrid() {
+    if (!this.craftGrid) return;
+    for (let i = 0; i < 9; i++) {
+      const s = this.craftGrid[i];
+      if (!s) continue;
+      mergeIntoSlots(this.slots, s);
+      this.craftGrid[i] = null;
+    }
+  }
+
+  _recipeCanFill(recipe) {
+    const need = recipeIngredientMap(recipe);
+    return hasIngredients(this.slots, this.craftGrid || [], need);
+  }
+
   _buildCraftingList() {
     const wrap = this._invCraftEl;
     if (!wrap) return;
@@ -263,33 +289,261 @@ export class Interaction {
       return;
     }
     wrap.classList.remove('hidden');
-    const title = document.createElement('div');
-    title.className = 'inv-palette-title';
-    title.textContent = 'Fabrication (consomme les ressources de ton inventaire)';
-    wrap.appendChild(title);
-    for (const r of CRAFT_RECIPES) {
+    wrap.classList.add('inv-craft-mc');
+
+    const bookCol = document.createElement('div');
+    bookCol.className = 'recipe-book-col';
+    const bookTitle = document.createElement('div');
+    bookTitle.className = 'inv-palette-title';
+    bookTitle.textContent = 'Livre de recettes';
+    bookCol.appendChild(bookTitle);
+    const bookList = document.createElement('div');
+    bookList.className = 'recipe-book-list';
+    bookCol.appendChild(bookList);
+
+    for (const recipe of RECIPES) {
       const row = document.createElement('div');
-      row.className = 'craft-row';
-      const name = BLOCK_INFO[r.out.id]?.name || r.id;
-      const txt = document.createElement('span');
-      txt.className = 'craft-name';
-      txt.textContent = `${name} ×${r.out.count}`;
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'craft-btn';
-      btn.textContent = 'Fabriquer';
-      btn.disabled = !canCraft(this.slots, r);
-      btn.addEventListener('click', () => {
-        if (!craftInto(this.slots, r)) return;
+      row.className = 'recipe-book-row';
+      row.dataset.recipeId = recipe.id;
+      const icon = document.createElement('div');
+      icon.className = 'inv-icon recipe-book-icon';
+      icon.style.backgroundImage = `url(${blockIconDataURL(recipe.result.id, this.atlasCanvas)})`;
+      icon.style.backgroundSize = 'cover';
+      const label = document.createElement('span');
+      label.className = 'recipe-book-label';
+      const nm = BLOCK_INFO[recipe.result.id]?.name || recipe.id;
+      label.textContent = `${nm} ×${recipe.result.count}`;
+      row.appendChild(icon);
+      row.appendChild(label);
+      const can = this._recipeCanFill(recipe);
+      row.classList.toggle('recipe-book-row-disabled', !can);
+      row.title = can ? 'Clic : placer les ingrédients dans la grille' : 'Objets insuffisants';
+      row.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        if (e.button !== 0 || !this.craftGrid) return;
+        if (!this._recipeCanFill(recipe)) return;
+        if (!fillRecipeFromInventory(this.slots, this.craftGrid, recipe)) return;
         this._refreshHotbarDOM();
         this._refreshInventoryDOM();
-        this._buildCraftingList();
+        this._refreshCraftingDOM();
+        this._refreshRecipeBookRows();
         if (this.onInventoryChange) this.onInventoryChange();
       });
-      row.appendChild(txt);
-      row.appendChild(btn);
-      wrap.appendChild(row);
+      bookList.appendChild(row);
     }
+
+    const tableCol = document.createElement('div');
+    tableCol.className = 'craft-table-col';
+    const craftTitle = document.createElement('div');
+    craftTitle.className = 'inv-palette-title';
+    craftTitle.textContent = 'Table de craft';
+    tableCol.appendChild(craftTitle);
+
+    const tableRow = document.createElement('div');
+    tableRow.className = 'craft-table-row';
+    const gridEl = document.createElement('div');
+    gridEl.className = 'craft-grid-3x3';
+    for (let i = 0; i < 9; i++) {
+      gridEl.appendChild(this._buildCraftSlotEl(i));
+    }
+    const arrow = document.createElement('div');
+    arrow.className = 'craft-arrow';
+    arrow.textContent = '→';
+    const resultEl = document.createElement('div');
+    resultEl.className = 'inv-slot craft-result-slot';
+    resultEl.title = 'Clic : fabriquer une fois';
+    resultEl.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      if (e.button !== 0 || !this.craftGrid) return;
+      const recipe = findMatchingRecipe(this.craftGrid);
+      if (!recipe) return;
+      if (!craftOnceFromGrid(this.craftGrid, this.slots, recipe)) return;
+      this._refreshHotbarDOM();
+      this._refreshInventoryDOM();
+      this._refreshCraftingDOM();
+      this._refreshRecipeBookRows();
+      if (this.onInventoryChange) this.onInventoryChange();
+    });
+    tableRow.appendChild(gridEl);
+    tableRow.appendChild(arrow);
+    tableRow.appendChild(resultEl);
+    tableCol.appendChild(tableRow);
+
+    wrap.appendChild(bookCol);
+    wrap.appendChild(tableCol);
+    this._craftResultEl = resultEl;
+    this._refreshCraftingDOM();
+  }
+
+  _buildCraftSlotEl(i) {
+    const el = document.createElement('div');
+    el.className = 'inv-slot craft-slot';
+    el.dataset.craftIdx = String(i);
+    const icon = document.createElement('div');
+    icon.className = 'inv-icon';
+    const count = document.createElement('div');
+    count.className = 'inv-count';
+    el.appendChild(icon);
+    el.appendChild(count);
+    el.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      this._onCraftSlotMouseDown(i, e);
+    });
+    return el;
+  }
+
+  _refreshCraftingDOM() {
+    if (!this._invCraftEl || !this.craftGrid) return;
+    const els = this._invCraftEl.querySelectorAll('.craft-slot[data-craft-idx]');
+    els.forEach(el => {
+      const i = +el.dataset.craftIdx;
+      const s = this.craftGrid[i];
+      const icon = el.querySelector('.inv-icon');
+      const count = el.querySelector('.inv-count');
+      if (s) {
+        icon.style.backgroundImage = `url(${blockIconDataURL(s.id, this.atlasCanvas)})`;
+        icon.style.backgroundSize = 'cover';
+        el.title = BLOCK_INFO[s.id]?.name || '';
+        if (isFinite(s.count) && s.count > 1) count.textContent = s.count;
+        else count.textContent = '';
+      } else {
+        icon.style.backgroundImage = 'none';
+        el.title = '';
+        count.textContent = '';
+      }
+      el.classList.toggle('empty', !s);
+    });
+    if (this._craftResultEl) {
+      const recipe = findMatchingRecipe(this.craftGrid);
+      const icon = this._craftResultEl.querySelector('.inv-icon');
+      const count = this._craftResultEl.querySelector('.inv-count');
+      if (!icon) {
+        const ic = document.createElement('div');
+        ic.className = 'inv-icon';
+        const ct = document.createElement('div');
+        ct.className = 'inv-count';
+        this._craftResultEl.appendChild(ic);
+        this._craftResultEl.appendChild(ct);
+      }
+      const icon2 = this._craftResultEl.querySelector('.inv-icon');
+      const count2 = this._craftResultEl.querySelector('.inv-count');
+      if (recipe) {
+        icon2.style.backgroundImage = `url(${blockIconDataURL(recipe.result.id, this.atlasCanvas)})`;
+        icon2.style.backgroundSize = 'cover';
+        this._craftResultEl.title = `Clic : fabriquer — ${BLOCK_INFO[recipe.result.id]?.name || ''} ×${recipe.result.count}`;
+        count2.textContent = recipe.result.count > 1 ? String(recipe.result.count) : '';
+        this._craftResultEl.classList.remove('empty');
+        this._craftResultEl.classList.add('craft-result-ready');
+      } else {
+        icon2.style.backgroundImage = 'none';
+        count2.textContent = '';
+        this._craftResultEl.title = 'Place un motif valide';
+        this._craftResultEl.classList.add('empty');
+        this._craftResultEl.classList.remove('craft-result-ready');
+      }
+    }
+  }
+
+  _refreshRecipeBookRows() {
+    if (!this._invCraftEl) return;
+    this._invCraftEl.querySelectorAll('.recipe-book-row').forEach(row => {
+      const id = row.dataset.recipeId;
+      const recipe = RECIPES.find(r => r.id === id);
+      if (!recipe) return;
+      const can = this._recipeCanFill(recipe);
+      row.classList.toggle('recipe-book-row-disabled', !can);
+      row.title = can ? 'Clic : placer les ingrédients dans la grille' : 'Objets insuffisants';
+    });
+  }
+
+  _onCraftSlotMouseDown(i, e) {
+    if (!this.craftGrid) return;
+    const s = this.craftGrid[i];
+    const carried = this.carried;
+    const isLeft = e.button === 0;
+    const isRight = e.button === 2;
+    const shift = e.shiftKey;
+
+    if (shift && s) {
+      let remaining = isFinite(s.count) ? s.count : 64;
+      for (let j = 0; j < INV_SIZE && remaining > 0; j++) {
+        const t = this.slots[j];
+        if (t && t.id === s.id && isFinite(t.count) && t.count < STACK_MAX) {
+          const room = STACK_MAX - t.count;
+          const add = Math.min(room, remaining);
+          t.count += add;
+          remaining -= add;
+        }
+      }
+      for (let j = 0; j < INV_SIZE && remaining > 0; j++) {
+        if (!this.slots[j]) {
+          const add = Math.min(STACK_MAX, remaining);
+          this.slots[j] = { id: s.id, count: add };
+          remaining -= add;
+        }
+      }
+      if (isFinite(s.count)) {
+        s.count = remaining;
+        if (s.count <= 0) this.craftGrid[i] = null;
+      }
+      this._refreshCraftingDOM();
+      this._refreshInventoryDOM();
+      this._refreshHotbarDOM();
+      this._refreshRecipeBookRows();
+      if (this.onInventoryChange) this.onInventoryChange();
+      return;
+    }
+
+    if (isLeft) {
+      if (!carried) {
+        if (s) {
+          this.carried = isFinite(s.count) ? { id: s.id, count: s.count } : { id: s.id, count: 64 };
+          this.craftGrid[i] = null;
+        }
+      } else {
+        if (!s) {
+          this.craftGrid[i] = carried;
+          this.carried = null;
+        } else if (s.id === carried.id && isFinite(s.count) && isFinite(carried.count)) {
+          const room = STACK_MAX - s.count;
+          const add = Math.min(room, carried.count);
+          s.count += add;
+          carried.count -= add;
+          if (carried.count <= 0) this.carried = null;
+        } else {
+          this.craftGrid[i] = carried;
+          this.carried = s;
+        }
+      }
+    } else if (isRight) {
+      if (carried) {
+        if (!s) {
+          this.craftGrid[i] = { id: carried.id, count: 1 };
+          if (isFinite(carried.count)) carried.count -= 1;
+          if (isFinite(carried.count) && carried.count <= 0) this.carried = null;
+        } else if (s.id === carried.id && isFinite(s.count) && s.count < STACK_MAX) {
+          s.count += 1;
+          if (isFinite(carried.count)) carried.count -= 1;
+          if (isFinite(carried.count) && carried.count <= 0) this.carried = null;
+        }
+      } else if (s && isFinite(s.count) && s.count > 1) {
+        const half = Math.ceil(s.count / 2);
+        this.carried = { id: s.id, count: half };
+        s.count -= half;
+        if (s.count <= 0) this.craftGrid[i] = null;
+      } else if (s && isFinite(s.count) && s.count === 1) {
+        this.carried = { id: s.id, count: 1 };
+        this.craftGrid[i] = null;
+      } else if (s && !isFinite(s.count)) {
+        this.carried = { id: s.id, count: 64 };
+      }
+    }
+
+    this._refreshCraftingDOM();
+    this._refreshInventoryDOM();
+    this._refreshHotbarDOM();
+    this._refreshRecipeBookRows();
+    if (this.onInventoryChange) this.onInventoryChange();
   }
 
   _setMineBar(p) {
@@ -377,6 +631,10 @@ export class Interaction {
     } else {
       this._invCursorEl.classList.remove('visible');
     }
+    if (this.mode === 'survival' && this.invOpen && this.craftGrid) {
+      this._refreshCraftingDOM();
+      this._refreshRecipeBookRows();
+    }
   }
 
   openInventory() {
@@ -393,6 +651,7 @@ export class Interaction {
     if (!this.invOpen) return;
     this._cancelMining();
     this.invOpen = false;
+    if (this.mode === 'survival' && this.craftGrid) this._stowCraftGrid();
     this._invOverlayEl.classList.add('hidden');
     // If the cursor is still holding a stack, try to auto-stow it. In creative
     // mode an unplaced stack just disappears (it's free anyway).
@@ -659,8 +918,10 @@ export class Interaction {
 
   setMode(mode, inventory) {
     this._cancelMining();
+    if (this.mode === 'survival' && this.craftGrid) this._stowCraftGrid();
     this.mode = mode === 'survival' ? 'survival' : 'creative';
     this.slots = this._buildInitialSlots(inventory);
+    this.craftGrid = this.mode === 'survival' ? new Array(9).fill(null) : null;
     this._refreshHotbarDOM();
     // Rebuild the inventory DOM in case the palette visibility changed.
     if (this._invOverlayEl) {

@@ -171,6 +171,8 @@ function showSelectionScreen() {
   meNameEl.textContent = auth?.name || '?';
   renderWorldCards();
   refreshStats();
+  // Précharge l’atlas (pack + fallback) pendant l’écran des mondes.
+  ensureAtlas().catch(() => {});
 }
 
 logoutBtn.addEventListener('click', async () => {
@@ -230,7 +232,15 @@ renderer.toneMappingExposure = 0.85;
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 800);
 const baseFov = 75;
 
-const { canvas: atlasCanvas, texture: atlasTex } = buildAtlas();
+/** Atlas blocs (async : charge le resource pack `/texture-pack/` par-dessus le procédural). */
+let atlasCanvas = null;
+let atlasTex = null;
+async function ensureAtlas() {
+  if (atlasCanvas && atlasTex) return;
+  const built = await buildAtlas();
+  atlasCanvas = built.canvas;
+  atlasTex = built.texture;
+}
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -252,6 +262,17 @@ async function joinWorld(themeId) {
   selectionEl.classList.add('hidden');
   loading.classList.remove('hidden');
   progressBar.style.width = '5%';
+
+  try {
+    await ensureAtlas();
+  } catch (e) {
+    console.error(e);
+    alert('Impossible de charger les textures du jeu.');
+    selectionEl.classList.remove('hidden');
+    loading.classList.add('hidden');
+    return;
+  }
+  progressBar.style.width = '10%';
 
   session = await createSession(theme, name).catch(err => {
     console.error(err);

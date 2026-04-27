@@ -232,11 +232,75 @@ function speckle(ctx, color, count, seed, alpha = 1) {
   }
 }
 
-export function buildAtlas() {
-  const canvas = document.createElement('canvas');
-  canvas.width = TILE * ATLAS_COLS;
-  canvas.height = TILE * ATLAS_ROWS;
-  const ctx = canvas.getContext('2d');
+/** Textures Minecraft vanilla (resource pack) servies depuis `/texture-pack/`. */
+const RESOURCE_PACK_TEXTURES = '/texture-pack/assets/minecraft/textures/';
+
+/** @param {string} url */
+function loadPackImage(url) {
+  return new Promise((resolve) => {
+    const im = new Image();
+    im.crossOrigin = 'anonymous';
+    im.decoding = 'async';
+    im.onload = () => resolve(im);
+    im.onerror = () => resolve(null);
+    im.src = url;
+  });
+}
+
+/** Première tranche 16×16 (eau / lave animées en bande verticale). */
+function blitPackOntoTile(ctx, col, row, img) {
+  if (!img || !img.naturalWidth) return;
+  const dx = col * TILE;
+  const dy = row * TILE;
+  const sw = Math.min(TILE, img.naturalWidth);
+  const sh = Math.min(TILE, img.naturalHeight);
+  ctx.drawImage(img, 0, 0, sw, sh, dx, dy, TILE, TILE);
+}
+
+/** Cases atlas (col,row) alignées sur `FACE_TILES` / tiles procéduraux. */
+const RESOURCE_PACK_SLOTS = [
+  { col: 0, row: 0, rel: 'block/grass_block_top.png' },
+  { col: 1, row: 0, rel: 'block/grass_block_side.png' },
+  { col: 2, row: 0, rel: 'block/dirt.png' },
+  { col: 3, row: 0, rel: 'block/stone.png' },
+  { col: 0, row: 1, rel: 'block/sand.png' },
+  { col: 1, row: 1, rel: 'block/oak_log_top.png' },
+  { col: 2, row: 1, rel: 'block/oak_log.png' },
+  { col: 3, row: 1, rel: 'block/oak_leaves.png' },
+  { col: 0, row: 2, rel: 'block/oak_planks.png' },
+  { col: 1, row: 2, rel: 'block/glass.png' },
+  { col: 2, row: 2, rel: 'block/bedrock.png' },
+  { col: 3, row: 2, rel: 'block/water_still.png' },
+  { col: 0, row: 3, rel: 'block/snow.png' },
+  { col: 1, row: 3, rel: 'block/ice.png' },
+  { col: 2, row: 3, rel: 'block/cactus_side.png' },
+  { col: 3, row: 3, rel: 'block/lava_still.png' },
+  { col: 0, row: 4, rel: 'block/obsidian.png' },
+  { col: 0, row: 5, rel: 'block/coal_ore.png' },
+  { col: 1, row: 5, rel: 'block/iron_ore.png' },
+  { col: 2, row: 5, rel: 'block/gold_ore.png' },
+  { col: 3, row: 5, rel: 'block/diamond_ore.png' },
+  { col: 0, row: 6, rel: 'item/stick.png' },
+  { col: 1, row: 6, rel: 'item/coal.png' },
+  { col: 2, row: 6, rel: 'item/iron_ingot.png' },
+  { col: 3, row: 6, rel: 'item/gold_ingot.png' },
+  { col: 0, row: 7, rel: 'item/diamond.png' },
+  { col: 1, row: 7, rel: 'item/wooden_pickaxe.png' },
+  { col: 2, row: 7, rel: 'item/stone_pickaxe.png' },
+  { col: 3, row: 7, rel: 'item/iron_pickaxe.png' },
+  { col: 0, row: 8, rel: 'item/diamond_pickaxe.png' },
+];
+
+async function applyResourcePackTiles(ctx) {
+  await Promise.all(
+    RESOURCE_PACK_SLOTS.map(async ({ col, row, rel }) => {
+      const img = await loadPackImage(RESOURCE_PACK_TEXTURES + rel);
+      if (img) blitPackOntoTile(ctx, col, row, img);
+    }),
+  );
+}
+
+function paintProceduralAtlas(ctx) {
   ctx.imageSmoothingEnabled = false;
 
   // grass top - rich green with subtle yellow tufts and clusters
@@ -576,6 +640,19 @@ export function buildAtlas() {
     c.fillRect(6, 7, 2, 8);
     speckle(c, [200, 255, 250], 6, 322);
   });
+}
+
+/**
+ * Atlas 4×9 : d’abord procédural, puis recouvert par le pack dans `/texture-pack/` si présent.
+ * @returns {Promise<{ canvas: HTMLCanvasElement, texture: THREE.CanvasTexture }>}
+ */
+export async function buildAtlas() {
+  const canvas = document.createElement('canvas');
+  canvas.width = TILE * ATLAS_COLS;
+  canvas.height = TILE * ATLAS_ROWS;
+  const ctx = canvas.getContext('2d');
+  paintProceduralAtlas(ctx);
+  await applyResourcePackTiles(ctx);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.magFilter = THREE.NearestFilter;
