@@ -817,6 +817,7 @@ function pushChatEntry(entry) {
 }
 
 function appendChatEntryDom(entry, transient = true) {
+  const nearBottom = (chatLog.scrollTop + chatLog.clientHeight) >= (chatLog.scrollHeight - 16);
   const line = document.createElement('div');
   if (entry.type === 'system') {
     line.className = 'chat-line system';
@@ -833,6 +834,9 @@ function appendChatEntryDom(entry, transient = true) {
   }
   chatLog.appendChild(line);
   while (chatLog.childElementCount > 24) chatLog.removeChild(chatLog.firstChild);
+  if (nearBottom || chatInput.classList.contains('visible')) {
+    chatLog.scrollTop = chatLog.scrollHeight;
+  }
   if (transient) {
     const ttl = entry.type === 'announce' ? 14000 : (entry.type === 'system' ? 12000 : 8200);
     setTimeout(() => line.remove(), ttl);
@@ -843,6 +847,7 @@ function renderChatHistory(limit = 24) {
   chatLog.innerHTML = '';
   const list = chatState.history.slice(-limit);
   for (const e of list) appendChatEntryDom(e, false);
+  chatLog.scrollTop = chatLog.scrollHeight;
 }
 
 function escapeHtml(s) {
@@ -853,7 +858,7 @@ function escapeHtml(s) {
 
 function openChat() {
   if (!session) return;
-  renderChatHistory(40);
+  renderChatHistory(120);
   chatInput.classList.add('visible');
   chatInput.value = '';
   chatState.sentIndex = chatState.sent.length;

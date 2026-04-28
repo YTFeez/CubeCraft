@@ -556,20 +556,33 @@ button.small {
 #chat {
   position: fixed;
   left: 12px;
-  bottom: 90px;
-  width: 360px;
-  max-width: 50vw;
+  bottom: 86px;
+  width: 520px;
+  max-width: 62vw;
   z-index: 5;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 #chat-log {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 180px;
-  overflow: hidden;
+  max-height: 280px;
+  overflow-y: auto;
+  overflow-x: hidden;
   margin-bottom: 4px;
+  padding-right: 4px;
+  pointer-events: auto;
+}
+
+#chat-log::-webkit-scrollbar {
+  width: 8px;
+}
+#chat-log::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.35);
+}
+#chat-log::-webkit-scrollbar-thumb {
+  background: rgba(200, 200, 200, 0.45);
 }
 
 .chat-line {
