@@ -1,12 +1,16 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+:root {
+  --mc-font: "Press Start 2P", "VT323", "Courier New", monospace;
+}
+
 html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
   background: #000;
   color: #fff;
-  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--mc-font);
   user-select: none;
 }
 
@@ -771,7 +775,9 @@ button,
 input,
 select,
 textarea {
-  font-family: "Trebuchet MS", "Verdana", "Segoe UI", sans-serif;
+  font-family: var(--mc-font);
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .overlay {
