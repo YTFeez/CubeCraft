@@ -1072,14 +1072,14 @@ select,
 /* --- Inventaire style Minecraft (slots sur l'UI) --- */
 #inventory .inv-panel {
   position: relative;
-  width: 704px;
-  height: 664px;
+  width: 528px;
+  height: 498px;
   padding: 0;
   border: 0;
   box-shadow: none;
   background:
     url("/texture-pack/assets/minecraft/textures/gui/container/inventory.png")
-    center / 100% 100% no-repeat;
+    center / 122% 122% no-repeat;
 }
 
 #inventory .inv-panel h2,
@@ -1091,18 +1091,18 @@ select,
 #inventory .inv-hotbar {
   position: absolute;
   display: grid;
-  grid-template-columns: repeat(9, 64px);
-  gap: 8px;
+  grid-template-columns: repeat(9, 48px);
+  gap: 6px;
 }
 
 #inventory #inv-main {
-  left: 32px;
-  top: 336px;
+  left: 24px;
+  top: 252px;
 }
 
 #inventory #inv-hotbar {
-  left: 32px;
-  top: 568px;
+  left: 24px;
+  top: 426px;
 }
 
 #inventory .inv-sep {
@@ -1111,8 +1111,8 @@ select,
 
 #inventory #inv-craft.inv-craft-mc {
   position: absolute;
-  left: 392px;
-  top: 68px;
+  left: 294px;
+  top: 51px;
   margin: 0;
   display: block;
 }
@@ -1124,23 +1124,23 @@ select,
 
 #inventory #inv-craft .craft-table-row {
   display: grid;
-  grid-template-columns: auto 64px;
-  column-gap: 48px;
+  grid-template-columns: auto 48px;
+  column-gap: 36px;
   align-items: center;
 }
 
 #inventory #inv-craft .craft-grid-2x2 {
-  gap: 8px;
+  gap: 6px;
 }
 
 #inventory #inv-craft .craft-result-slot {
-  width: 64px;
-  height: 64px;
+  width: 48px;
+  height: 48px;
 }
 
 #inventory .inv-slot {
-  width: 64px;
-  height: 64px;
+  width: 48px;
+  height: 48px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -1153,18 +1153,18 @@ select,
 }
 
 #inventory .inv-icon {
-  width: 58px;
-  height: 58px;
-  margin: 3px;
+  width: 44px;
+  height: 44px;
+  margin: 2px;
   image-rendering: pixelated;
   filter: none;
   box-shadow: none;
 }
 
 #inventory .inv-count {
-  right: 4px;
+  right: 3px;
   bottom: 0;
-  font-size: 24px;
+  font-size: 18px;
   color: #fff;
   text-shadow: 1px 1px 0 #000;
 }
@@ -1173,7 +1173,7 @@ select,
   position: absolute;
   left: calc(100% + 14px);
   top: 0;
-  width: 280px;
-  max-height: 664px;
+  width: 220px;
+  max-height: 498px;
   overflow: auto;
 }
