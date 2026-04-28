@@ -656,6 +656,27 @@ async function createSession(theme, name) {
   const initialSlot = welcome.spawn?.slot | 0;
   let invDirty = false;
   let lastInvSent = 0;
+  const factionReq = async (path, body = null) => {
+    const headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + auth.token };
+    const res = await fetch(path, {
+      method: body ? 'POST' : 'GET',
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    let data = null;
+    try { data = await res.json(); } catch {}
+    return data || { ok: false, error: 'Erreur faction' };
+  };
+  const factionApi = {
+    state: () => factionReq('/api/faction'),
+    create: (nameV) => factionReq('/api/faction/create', { name: String(nameV || '').trim() }),
+    invite: (target) => factionReq('/api/faction/invite', { target: String(target || '').trim() }),
+    accept: () => factionReq('/api/faction/accept', {}),
+    decline: () => factionReq('/api/faction/decline', {}),
+    leave: () => factionReq('/api/faction/leave', {}),
+    kick: (target) => factionReq('/api/faction/kick', { target: String(target || '').trim() }),
+    transfer: (target) => factionReq('/api/faction/transfer', { target: String(target || '').trim() }),
+  };
   const interaction = new Interaction({
     camera, world, player, scene, atlasCanvas, audio,
     hotbar: theme.hotbar,
@@ -673,6 +694,7 @@ async function createSession(theme, name) {
     onSlot: (slot) => network.sendSlot(slot),
     onInventoryChange: () => { invDirty = true; },
     onDropItem: (drop) => network.sendDropItem(drop),
+    factionApi,
   });
 
   const session = {

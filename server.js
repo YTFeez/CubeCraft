@@ -11,6 +11,7 @@ const fs = require('fs');
 const express = require('express');
 const { WebSocketServer } = require('ws');
 const accounts = require('./server/accounts');
+const factions = require('./server/factions');
 
 const PORT = process.env.PORT || 8080;
 const SAVE_DIR = path.join(__dirname, 'world-saves');
@@ -167,6 +168,79 @@ app.get('/api/me', (req, res) => {
   res.json({ name: u.name, createdAt: u.createdAt });
 });
 
+function authUser(req, res) {
+  const auth = req.headers.authorization || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  const u = accounts.getUserByToken(token);
+  if (!u) {
+    res.status(401).json({ error: 'Token invalide' });
+    return null;
+  }
+  return u;
+}
+
+app.get('/api/faction', (req, res) => {
+  const u = authUser(req, res);
+  if (!u) return;
+  res.json({ ok: true, ...factions.stateFor(u.name) });
+});
+
+app.post('/api/faction/create', (req, res) => {
+  const u = authUser(req, res);
+  if (!u) return;
+  const r = factions.createFaction(u.name, req.body?.name);
+  if (!r.ok) return res.status(400).json({ ok: false, error: r.error });
+  res.json({ ok: true, ...factions.stateFor(u.name) });
+});
+
+app.post('/api/faction/leave', (req, res) => {
+  const u = authUser(req, res);
+  if (!u) return;
+  const r = factions.leaveFaction(u.name);
+  if (!r.ok) return res.status(400).json({ ok: false, error: r.error });
+  res.json({ ok: true, ...factions.stateFor(u.name) });
+});
+
+app.post('/api/faction/invite', (req, res) => {
+  const u = authUser(req, res);
+  if (!u) return;
+  const r = factions.invite(u.name, req.body?.target);
+  if (!r.ok) return res.status(400).json({ ok: false, error: r.error });
+  res.json({ ok: true, ...factions.stateFor(u.name) });
+});
+
+app.post('/api/faction/accept', (req, res) => {
+  const u = authUser(req, res);
+  if (!u) return;
+  const r = factions.acceptInvite(u.name);
+  if (!r.ok) return res.status(400).json({ ok: false, error: r.error });
+  res.json({ ok: true, ...factions.stateFor(u.name) });
+});
+
+app.post('/api/faction/decline', (req, res) => {
+  const u = authUser(req, res);
+  if (!u) return;
+  const r = factions.declineInvite(u.name);
+  if (!r.ok) return res.status(400).json({ ok: false, error: r.error });
+  res.json({ ok: true, ...factions.stateFor(u.name) });
+});
+
+app.post('/api/faction/kick', (req, res) => {
+  const u = authUser(req, res);
+  if (!u) return;
+  const r = factions.kick(u.name, req.body?.target);
+  if (!r.ok) return res.status(400).json({ ok: false, error: r.error });
+  res.json({ ok: true, ...factions.stateFor(u.name) });
+});
+
+app.post('/api/faction/transfer', (req, res) => {
+  const u = authUser(req, res);
+  if (!u) return;
+  const r = factions.transfer(u.name, req.body?.target);
+  if (!r.ok) return res.status(400).json({ ok: false, error: r.error });
+  res.json({ ok: true, ...factions.stateFor(u.name) });
+});
+
 // Permanently delete the calling user. Drops them from every room they may
 // be connected to, then wipes their account data.
 app.delete('/api/account', (req, res) => {
@@ -185,6 +259,7 @@ app.delete('/api/account', (req, res) => {
       }
     }
   }
+  factions.removeMember(username);
   accounts.deleteAccount(username);
   res.json({ ok: true });
 });
@@ -762,6 +837,7 @@ function shutdown() {
   }
   globalTimeDirty = true; saveGlobalTime();
   try { accounts.saveSync(); } catch {}
+  try { factions.saveSync(); } catch {}
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 1500);
 }

@@ -37,7 +37,7 @@ const CREATIVE_PALETTE = [
 ];
 
 export class Interaction {
-  constructor({ camera, world, player, scene, atlasCanvas, audio, onChange, onBreak, onEdit, onSlot, onInventoryChange, onDropItem, hotbar, initialSlot, mode, initialInventory }) {
+  constructor({ camera, world, player, scene, atlasCanvas, audio, onChange, onBreak, onEdit, onSlot, onInventoryChange, onDropItem, hotbar, initialSlot, mode, initialInventory, factionApi = null }) {
     this.camera = camera;
     this.world = world;
     this.player = player;
@@ -50,6 +50,7 @@ export class Interaction {
     this.onSlot = onSlot;
     this.onInventoryChange = onInventoryChange;
     this.onDropItem = onDropItem;
+    this.factionApi = factionApi;
     this.mode = mode === 'survival' ? 'survival' : 'creative';
     this._defaultHotbar = (hotbar && hotbar.length ? hotbar : HOTBAR_BLOCKS).slice(0, HOTBAR_SIZE);
 
@@ -215,9 +216,28 @@ export class Interaction {
 
             <section class="inv-page" data-tab="faction">
               <h2>Faction</h2>
-              <div class="inv-placeholder-card">
-                <p>Gestion de faction (grade, membres, alliances) prete pour branchement serveur.</p>
-                <button type="button" class="secondary">Creer une faction</button>
+              <div class="inv-placeholder-card" id="faction-panel">
+                <div class="faction-row">
+                  <input id="faction-name-input" type="text" maxlength="24" placeholder="Nom de faction" />
+                  <button type="button" class="secondary" id="faction-create-btn">Créer</button>
+                </div>
+                <div class="faction-row">
+                  <input id="faction-invite-input" type="text" maxlength="16" placeholder="Pseudo à inviter" />
+                  <button type="button" class="secondary" id="faction-invite-btn">Inviter</button>
+                </div>
+                <div class="faction-row">
+                  <button type="button" class="secondary" id="faction-accept-btn">Accepter invitation</button>
+                  <button type="button" class="secondary" id="faction-decline-btn">Refuser</button>
+                </div>
+                <div class="faction-row">
+                  <input id="faction-member-input" type="text" maxlength="16" placeholder="Membre (kick/chef)" />
+                  <button type="button" class="secondary" id="faction-kick-btn">Kick</button>
+                  <button type="button" class="secondary" id="faction-transfer-btn">Passer chef</button>
+                </div>
+                <div class="faction-row">
+                  <button type="button" class="secondary danger" id="faction-leave-btn">Quitter faction</button>
+                </div>
+                <pre id="faction-status" class="faction-status">Chargement faction...</pre>
               </div>
             </section>
 
@@ -245,6 +265,7 @@ export class Interaction {
     this._invPaletteEl = overlay.querySelector('#inv-palette');
     this._invCursorEl = overlay.querySelector('#inv-cursor');
     this._invRecipeBookEl = overlay.querySelector('#inv-recipe-book-tab');
+    this._factionPanelEl = overlay.querySelector('#faction-panel');
 
     // Build empty slot grid (main 27 then hotbar 9). We render hotbar twice:
     // the bottom row of the inventory grid mirrors the live hotbar so the
@@ -297,6 +318,7 @@ export class Interaction {
     }
     this._buildCraftingList();
     this._buildRecipeBookTab();
+    this._wireFactionTab();
     this._setInventoryTab(this.activeInvTab);
 
     // Click outside the panel: drop the carried stack back into the world.
@@ -338,6 +360,68 @@ export class Interaction {
     this._invOverlayEl.querySelectorAll('.inv-page').forEach(page => {
       page.classList.toggle('active', page.dataset.tab === safeTab);
     });
+    if (safeTab === 'faction') this._refreshFactionState();
+  }
+
+  _wireFactionTab() {
+    if (!this._factionPanelEl || !this.factionApi || this._factionWired) return;
+    this._factionWired = true;
+    const q = (id) => this._factionPanelEl.querySelector(id);
+    const nameInp = q('#faction-name-input');
+    const inviteInp = q('#faction-invite-input');
+    const memberInp = q('#faction-member-input');
+    const statusEl = q('#faction-status');
+    const setStatus = (txt) => { if (statusEl) statusEl.textContent = txt; };
+    const call = async (fn, arg) => {
+      try {
+        setStatus('...');
+        const r = await fn(arg);
+        if (!r?.ok) {
+          setStatus(`Erreur: ${r?.error || 'action impossible'}`);
+          return;
+        }
+        this._renderFactionState(r);
+      } catch {
+        setStatus('Erreur réseau faction.');
+      }
+    };
+    q('#faction-create-btn')?.addEventListener('click', () => call(this.factionApi.create, nameInp?.value || ''));
+    q('#faction-invite-btn')?.addEventListener('click', () => call(this.factionApi.invite, inviteInp?.value || ''));
+    q('#faction-accept-btn')?.addEventListener('click', () => call(this.factionApi.accept));
+    q('#faction-decline-btn')?.addEventListener('click', () => call(this.factionApi.decline));
+    q('#faction-kick-btn')?.addEventListener('click', () => call(this.factionApi.kick, memberInp?.value || ''));
+    q('#faction-transfer-btn')?.addEventListener('click', () => call(this.factionApi.transfer, memberInp?.value || ''));
+    q('#faction-leave-btn')?.addEventListener('click', () => call(this.factionApi.leave));
+  }
+
+  async _refreshFactionState() {
+    if (!this.factionApi || !this._factionPanelEl) return;
+    const statusEl = this._factionPanelEl.querySelector('#faction-status');
+    if (statusEl) statusEl.textContent = 'Chargement...';
+    try {
+      const r = await this.factionApi.state();
+      this._renderFactionState(r);
+    } catch {
+      if (statusEl) statusEl.textContent = 'Erreur réseau faction.';
+    }
+  }
+
+  _renderFactionState(r) {
+    if (!this._factionPanelEl) return;
+    const statusEl = this._factionPanelEl.querySelector('#faction-status');
+    if (!statusEl) return;
+    if (!r?.ok) {
+      statusEl.textContent = `Erreur: ${r?.error || 'inconnue'}`;
+      return;
+    }
+    const f = r.faction;
+    const inv = r.invite;
+    if (!f) {
+      statusEl.textContent = `Aucune faction.\nInvitation: ${inv ? `${inv.factionName} (de ${inv.from})` : 'aucune'}`;
+      return;
+    }
+    const members = (f.members || []).join(', ');
+    statusEl.textContent = `Faction: ${f.name}\nChef: ${f.owner}\nRôle: ${f.role}\nMembres (${(f.members || []).length}): ${members}\nInvitation: ${inv ? `${inv.factionName} (de ${inv.from})` : 'aucune'}`;
   }
 
   _buildRecipeBookTab() {
