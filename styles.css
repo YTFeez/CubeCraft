@@ -1072,14 +1072,21 @@ select,
 /* --- Inventaire style Minecraft (slots sur l'UI) --- */
 #inventory .inv-panel {
   position: relative;
-  width: 528px;
-  height: 498px;
+  width: 620px;
+  height: 586px;
   padding: 0;
   border: 0;
   box-shadow: none;
   background:
     url("/texture-pack/assets/minecraft/textures/gui/container/inventory.png")
-    center / 122% 122% no-repeat;
+    center center / 100% 100% no-repeat;
+}
+
+#inventory {
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
 }
 
 #inventory .inv-panel h2,
