@@ -52,20 +52,22 @@ html, body {
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  gap: 4px;
+  gap: 3px;
   padding: 4px;
-  background: rgba(0,0,0,0.35);
-  border: 2px solid rgba(255,255,255,0.25);
-  border-radius: 6px;
+  background: rgba(0,0,0,0.62);
+  border: 2px solid rgba(20,20,20,0.95);
+  box-shadow: inset 0 0 0 2px rgba(120,120,120,0.55), 0 2px 0 rgba(0,0,0,0.55);
+  border-radius: 0;
   z-index: 5;
 }
 
 .slot {
   width: 54px;
   height: 54px;
-  background: rgba(0,0,0,0.45);
-  border: 2px solid rgba(255,255,255,0.15);
-  border-radius: 4px;
+  background: rgba(40,40,40,0.88);
+  border: 2px solid rgba(15,15,15,0.98);
+  box-shadow: inset 0 0 0 2px rgba(120,120,120,0.4);
+  border-radius: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -77,8 +79,8 @@ html, body {
 .slot:hover { transform: translateY(-2px); }
 
 .slot.active {
-  border-color: #fff;
-  box-shadow: 0 0 12px rgba(255,255,255,0.35);
+  border-color: #f0f0f0;
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,0.9), 0 0 10px rgba(255,255,255,0.35);
 }
 
 .slot .key {
@@ -93,8 +95,10 @@ html, body {
   width: 36px;
   height: 36px;
   image-rendering: pixelated;
-  border-radius: 2px;
   box-shadow: inset 0 -6px rgba(0,0,0,0.3), inset 0 6px rgba(255,255,255,0.15);
+}
+.slot.tool-slot .icon {
+  box-shadow: none;
 }
 
 .slot.empty .icon {

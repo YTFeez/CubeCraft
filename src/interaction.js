@@ -153,6 +153,7 @@ export class Interaction {
       if (data) {
         icon.style.backgroundImage = `url(${blockIconDataURL(data.id, this.atlasCanvas)})`;
         icon.style.backgroundSize = 'cover';
+        el.classList.toggle('tool-slot', BLOCK_INFO[data.id]?.placeable === false);
         el.title = BLOCK_INFO[data.id]?.name || '';
         if (this.mode === 'survival' && isFinite(data.count)) {
           count.textContent = data.count > 1 ? data.count : '';
@@ -161,6 +162,7 @@ export class Interaction {
         }
       } else {
         icon.style.backgroundImage = 'none';
+        el.classList.remove('tool-slot');
         el.title = '';
         count.textContent = '';
       }

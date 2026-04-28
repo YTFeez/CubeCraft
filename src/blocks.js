@@ -722,11 +722,14 @@ export function blockIconDataURL(blockId, atlasCanvas) {
   const col = tile % ATLAS_COLS;
   const row = Math.floor(tile / ATLAS_COLS);
   c.drawImage(atlasCanvas, col * TILE, row * TILE, TILE, TILE, 0, 0, 36, 36);
-  // darken bottom half a bit for 3D feel
-  const g = c.createLinearGradient(0, 0, 0, 36);
-  g.addColorStop(0, 'rgba(255,255,255,0.12)');
-  g.addColorStop(1, 'rgba(0,0,0,0.25)');
-  c.fillStyle = g;
-  c.fillRect(0, 0, 36, 36);
+  // Garder les items/outils "bruts" (sans ombre) pour un rendu plus fidèle.
+  const isItemLike = BLOCK_INFO[blockId]?.placeable === false;
+  if (!isItemLike) {
+    const g = c.createLinearGradient(0, 0, 0, 36);
+    g.addColorStop(0, 'rgba(255,255,255,0.12)');
+    g.addColorStop(1, 'rgba(0,0,0,0.25)');
+    c.fillStyle = g;
+    c.fillRect(0, 0, 36, 36);
+  }
   return off.toDataURL();
 }
