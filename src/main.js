@@ -54,6 +54,17 @@ const respawnBtn   = document.getElementById('respawn-btn');
 const damageFlash  = document.getElementById('damage-flash');
 const deleteAccountBtn = document.getElementById('delete-account-btn');
 
+// Chat UX: historique persistant, navigation flèches, tab-completion.
+const chatState = {
+  history: [],       // messages affichés reçus (persistants sur la session cliente)
+  sent: [],          // textes envoyés par le joueur
+  sentIndex: -1,
+  commandList: ['/help'],
+  tabMatches: [],
+  tabIndex: 0,
+  maxHistory: 180,
+};
+
 // =========================================================================
 // SELECTION SCREEN (rendered first so it's always visible)
 // =========================================================================
@@ -443,6 +454,13 @@ async function createSession(theme, name) {
 
   const network = new Network({ url: wsUrl, roomId: theme.id, name, token: auth.token, handlers });
   const welcome = await network.connect();
+  chatState.commandList = Array.isArray(welcome.commandList) && welcome.commandList.length
+    ? welcome.commandList
+    : ['/help'];
+  if (Array.isArray(welcome.recentChat) && welcome.recentChat.length) {
+    chatState.history = welcome.recentChat.slice(-chatState.maxHistory);
+    renderChatHistory(12);
+  }
 
   // Apply initial world state from the server.
   world.applyServerEdits(welcome.edits || {});
@@ -773,38 +791,58 @@ function updateAtmosphere(s, t) {
 // CHAT
 // =========================================================================
 function addChatLine(from, text, color = '#ffffff') {
-  const line = document.createElement('div');
-  line.className = 'chat-line';
-  if (from === '-') {
-    line.innerHTML = `<i style="opacity:0.7">${escapeHtml(text)}</i>`;
-  } else {
-    line.innerHTML = `<span class="from" style="color:${color}">${escapeHtml(from)}:</span>${escapeHtml(text)}`;
-  }
-  chatLog.appendChild(line);
-  while (chatLog.childElementCount > 8) chatLog.removeChild(chatLog.firstChild);
-  setTimeout(() => line.remove(), 8200);
+  pushChatEntry({ type: 'chat', from, text, color, ts: Date.now() });
+  appendChatEntryDom({ type: 'chat', from, text, color }, !chatInput.classList.contains('visible'));
 }
 
 function addSystemLine(text, color = '#9aa5b1') {
   // System messages can be multi-line.
   const lines = String(text).split('\n');
   for (const t of lines) {
-    const line = document.createElement('div');
-    line.className = 'chat-line system';
-    line.innerHTML = `<i style="color:${color}">${escapeHtml(t)}</i>`;
-    chatLog.appendChild(line);
-    while (chatLog.childElementCount > 12) chatLog.removeChild(chatLog.firstChild);
-    setTimeout(() => line.remove(), 12000);
+    pushChatEntry({ type: 'system', text: t, color, ts: Date.now() });
+    appendChatEntryDom({ type: 'system', text: t, color }, !chatInput.classList.contains('visible'));
   }
 }
 
 function addAnnounceLine(from, text) {
+  pushChatEntry({ type: 'announce', from, text, ts: Date.now() });
+  appendChatEntryDom({ type: 'announce', from, text }, !chatInput.classList.contains('visible'));
+}
+
+function pushChatEntry(entry) {
+  chatState.history.push(entry);
+  if (chatState.history.length > chatState.maxHistory) {
+    chatState.history.splice(0, chatState.history.length - chatState.maxHistory);
+  }
+}
+
+function appendChatEntryDom(entry, transient = true) {
   const line = document.createElement('div');
-  line.className = 'chat-line announce';
-  line.innerHTML = `<span class="announce-prefix">★ Annonce de ${escapeHtml(from)}</span><br>${escapeHtml(text)}`;
+  if (entry.type === 'system') {
+    line.className = 'chat-line system';
+    line.innerHTML = `<i style="color:${entry.color || '#9aa5b1'}">${escapeHtml(entry.text || '')}</i>`;
+  } else if (entry.type === 'announce') {
+    line.className = 'chat-line announce';
+    line.innerHTML = `<span class="announce-prefix">★ Annonce de ${escapeHtml(entry.from || '')}</span><br>${escapeHtml(entry.text || '')}`;
+  } else if (entry.from === '-') {
+    line.className = 'chat-line';
+    line.innerHTML = `<i style="opacity:0.7">${escapeHtml(entry.text || '')}</i>`;
+  } else {
+    line.className = 'chat-line';
+    line.innerHTML = `<span class="from" style="color:${entry.color || '#fff'}">${escapeHtml(entry.from || '')}:</span>${escapeHtml(entry.text || '')}`;
+  }
   chatLog.appendChild(line);
-  while (chatLog.childElementCount > 12) chatLog.removeChild(chatLog.firstChild);
-  setTimeout(() => line.remove(), 14000);
+  while (chatLog.childElementCount > 24) chatLog.removeChild(chatLog.firstChild);
+  if (transient) {
+    const ttl = entry.type === 'announce' ? 14000 : (entry.type === 'system' ? 12000 : 8200);
+    setTimeout(() => line.remove(), ttl);
+  }
+}
+
+function renderChatHistory(limit = 24) {
+  chatLog.innerHTML = '';
+  const list = chatState.history.slice(-limit);
+  for (const e of list) appendChatEntryDom(e, false);
 }
 
 function escapeHtml(s) {
@@ -815,8 +853,12 @@ function escapeHtml(s) {
 
 function openChat() {
   if (!session) return;
+  renderChatHistory(40);
   chatInput.classList.add('visible');
   chatInput.value = '';
+  chatState.sentIndex = chatState.sent.length;
+  chatState.tabMatches = [];
+  chatState.tabIndex = 0;
   chatInput.focus();
   if (document.pointerLockElement) document.exitPointerLock();
 }
@@ -827,11 +869,45 @@ function closeChat() {
 chatInput.addEventListener('keydown', (e) => {
   if (e.code === 'Enter') {
     const txt = chatInput.value.trim();
-    if (txt && session) session.network.sendChat(txt);
+    if (txt && session) {
+      session.network.sendChat(txt);
+      chatState.sent.push(txt);
+      if (chatState.sent.length > 120) chatState.sent.shift();
+    }
+    chatState.sentIndex = chatState.sent.length;
+    chatState.tabMatches = [];
+    chatState.tabIndex = 0;
     closeChat();
     e.preventDefault();
   } else if (e.code === 'Escape') {
     closeChat();
+  } else if (e.code === 'ArrowUp') {
+    if (!chatState.sent.length) return;
+    chatState.sentIndex = Math.max(0, chatState.sentIndex - 1);
+    chatInput.value = chatState.sent[chatState.sentIndex] || '';
+    e.preventDefault();
+  } else if (e.code === 'ArrowDown') {
+    if (!chatState.sent.length) return;
+    chatState.sentIndex = Math.min(chatState.sent.length, chatState.sentIndex + 1);
+    chatInput.value = chatState.sent[chatState.sentIndex] || '';
+    e.preventDefault();
+  } else if (e.code === 'Tab') {
+    const v = chatInput.value;
+    if (!v.startsWith('/')) return;
+    const token = v.slice(1).trim().toLowerCase();
+    const base = token.split(/\s+/)[0];
+    if (!chatState.tabMatches.length) {
+      chatState.tabMatches = chatState.commandList.filter(c => c.startsWith('/' + base));
+      if (!chatState.tabMatches.length) return;
+      chatState.tabIndex = 0;
+    } else {
+      chatState.tabIndex = (chatState.tabIndex + 1) % chatState.tabMatches.length;
+    }
+    const choice = chatState.tabMatches[chatState.tabIndex];
+    chatInput.value = choice + (v.includes(' ') ? v.slice(v.indexOf(' ')) : ' ');
+    e.preventDefault();
+  } else {
+    chatState.tabMatches = [];
   }
 });
 

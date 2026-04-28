@@ -64,6 +64,7 @@ function loadRoom(roomDef) {
     edits,             // { "cx,cz": { "lx,ly,lz": blockId, ... }, ... }
     players: new Map(),// id -> { ws, name, x, y, z, yaw, pitch, color }
     drops: new Map(),  // dropId -> { x, y, z, vx, vy, vz, blockId, ownerId, t }
+    chatHistory: [],   // derniers messages (persistants en mémoire serveur)
     nextDropId: 1,
     dirty: false,
   };
@@ -230,17 +231,62 @@ const PLAYER_COLORS = ['#ff7676', '#ffd166', '#06d6a0', '#118ab2', '#c77dff', '#
 // ADMIN COMMANDS
 // =========================================================================
 
-const ADMIN_HELP = [
-  '/help — affiche cette aide',
-  '/list — liste tous les joueurs en ligne (tous les mondes)',
-  '/tp <pseudo> — te téléporte vers ce joueur (même monde)',
-  '/tphere <pseudo> — téléporte ce joueur vers toi (même monde)',
-  '/time <0-23 | day | night | morning | sunset> — règle l\'heure pour tous les mondes',
-  '/say <texte> — message en gold dans le chat de ce monde',
-  '/announce <texte> — message diffusé dans tous les mondes',
-  '/kick <pseudo> — déconnecte ce joueur',
-  '/clear — réinitialise les blocs cassés/posés du monde courant',
+const ADMIN_HELP_LINES = [
+  '/help, /h — affiche cette aide',
+  '/cmds, /commands, /? — alias disponibles',
+  '/list, /who, /online — joueurs en ligne',
+  '/here, /where — infos du monde courant',
+  '/tp <pseudo> — te téléporte vers ce joueur',
+  '/tphere <pseudo> — téléporte ce joueur vers toi',
+  '/find <pseudo> — indique le monde d\'un joueur',
+  '/time <0-23|preset>, /settime <...> — règle l\'heure globale',
+  '/day, /night, /morning, /sunset, /midnight — presets rapides',
+  '/say <texte> — message admin dans ce monde',
+  '/announce <texte> — annonce dans tous les mondes',
+  '/me <action> — emote',
+  '/kick <pseudo> — déconnecte un joueur',
+  '/clear, /resetworld — reset les edits du monde',
+  '/count, /players — nb de joueurs par monde',
+  '/worlds — liste les mondes',
 ].join('\n');
+const ADMIN_HELP = ADMIN_HELP_LINES;
+
+const COMMAND_ALIASES = {
+  help: ['h', '?', 'aide', 'commands', 'cmds', 'adminhelp'],
+  list: ['who', 'online', 'players', 'joueurs', 'listall', 'whois', 'lsplayers'],
+  here: ['where', 'room', 'monde', 'world', 'roominfo', 'worldinfo'],
+  worlds: ['rooms', 'maps', 'mondes', 'worldlist', 'roomlist'],
+  count: ['playercount', 'pc', 'census', 'pop'],
+  tp: ['teleport', 'goto', 'warp', 'jumpto'],
+  tphere: ['bring', 'summon', 'pull', 'tpbring', 'comehere'],
+  find: ['whereis', 'locate', 'findplayer', 'lookup'],
+  time: ['settime', 'heure', 'clock', 'timeof', 'timeofday'],
+  day: ['jour', 'sunrise2', 'time_day'],
+  night: ['nuit', 'time_night'],
+  morning: ['matin', 'dawn', 'sunrise', 'time_morning'],
+  sunset: ['soir', 'evening', 'dusk', 'time_sunset'],
+  midnight: ['minuit', 'time_midnight'],
+  say: ['s', 'chatadmin', 'speak', 'talk', 'msgworld'],
+  announce: ['broadcast', 'bc', 'global', 'all', 'shout', 'news'],
+  me: ['emote', 'action', 'pose'],
+  kick: ['k', 'boot', 'disconnect', 'remove'],
+  clear: ['resetworld', 'reset', 'wipe', 'clean', 'purge', 'clearworld'],
+};
+
+const COMMAND_ALIASES_INDEX = (() => {
+  const m = new Map();
+  for (const [base, aliases] of Object.entries(COMMAND_ALIASES)) {
+    m.set(base, base);
+    for (const a of aliases) m.set(a, base);
+  }
+  return m;
+})();
+
+const PUBLIC_COMMANDS = ['/help'];
+const ADMIN_COMMANDS = Array.from(new Set(
+  Object.entries(COMMAND_ALIASES).flatMap(([base, aliases]) =>
+    [base, ...aliases].map(c => `/${c}`))
+));
 
 function sendSystem(send, text, color = '#9aa5b1') {
   send({ type: 'system', text, color });
@@ -298,13 +344,27 @@ function broadcastEverywhere(obj) {
   }
 }
 
+function normalizeCommand(cmdRaw) {
+  const key = (cmdRaw || '').toLowerCase().trim();
+  return COMMAND_ALIASES_INDEX.get(key) || key;
+}
+
+function pushRoomChat(room, entry) {
+  if (!room.chatHistory) room.chatHistory = [];
+  room.chatHistory.push(entry);
+  if (room.chatHistory.length > 120) room.chatHistory.splice(0, room.chatHistory.length - 120);
+}
+
 function handleCommand(send, broadcast, me, room, body) {
   const [cmdRaw, ...rest] = body.trim().split(/\s+/);
-  const cmd = (cmdRaw || '').toLowerCase();
+  const cmd = normalizeCommand(cmdRaw);
   const arg = rest.join(' ');
 
   if (cmd === 'help') {
-    if (isAdmin(me.username)) sendSystem(send, ADMIN_HELP);
+    if (isAdmin(me.username)) {
+      sendSystem(send, ADMIN_HELP);
+      sendSystem(send, `Alias admin actifs: ${ADMIN_COMMANDS.length}`, '#9aa5b1');
+    }
     else sendSystem(send, 'Aucune commande disponible (compte non-admin).');
     return;
   }
@@ -325,6 +385,20 @@ function handleCommand(send, broadcast, me, room, body) {
       sendSystem(send, lines.length ? lines.join('\n') : 'Aucun joueur en ligne.', '#9aa5b1');
       break;
     }
+    case 'here': {
+      sendSystem(send, `Monde: ${room.name} (${room.id}) · joueurs: ${room.players.size} · edits: ${Object.keys(room.edits).length}`, '#9aa5b1');
+      break;
+    }
+    case 'worlds': {
+      const lines = Array.from(rooms.values()).map(r => `${r.name} (${r.id}) — ${r.players.size} joueurs`);
+      sendSystem(send, lines.join('\n'), '#9aa5b1');
+      break;
+    }
+    case 'count': {
+      const total = Array.from(rooms.values()).reduce((a, r) => a + r.players.size, 0);
+      sendSystem(send, `Total en ligne: ${total}`, '#9aa5b1');
+      break;
+    }
     case 'tp': {
       if (!arg) return sendSystem(send, 'Usage: /tp <pseudo>', '#ff8080');
       const target = findPlayerInRoom(room, arg);
@@ -343,6 +417,18 @@ function handleCommand(send, broadcast, me, room, body) {
       sendSystem(send, `→ ${target.name} téléporté vers toi.`, '#7fd87f');
       break;
     }
+    case 'find': {
+      if (!arg) return sendSystem(send, 'Usage: /find <pseudo>', '#ff8080');
+      const found = findPlayerEverywhere(arg);
+      if (!found) return sendSystem(send, `"${arg}" introuvable.`, '#ff8080');
+      sendSystem(send, `${found.player.name} est dans ${found.room.name} (${found.room.id}).`, '#7fd87f');
+      break;
+    }
+    case 'day': globalTimeOfDay = 0.5; globalTimeDirty = true; broadcastEverywhere({ type: 'timeSync', t: globalTimeOfDay }); sendSystem(send, 'Heure réglée: jour.', '#7fd87f'); break;
+    case 'night': globalTimeOfDay = 0.0; globalTimeDirty = true; broadcastEverywhere({ type: 'timeSync', t: globalTimeOfDay }); sendSystem(send, 'Heure réglée: nuit.', '#7fd87f'); break;
+    case 'morning': globalTimeOfDay = 0.25; globalTimeDirty = true; broadcastEverywhere({ type: 'timeSync', t: globalTimeOfDay }); sendSystem(send, 'Heure réglée: matin.', '#7fd87f'); break;
+    case 'sunset': globalTimeOfDay = 0.75; globalTimeDirty = true; broadcastEverywhere({ type: 'timeSync', t: globalTimeOfDay }); sendSystem(send, 'Heure réglée: coucher du soleil.', '#7fd87f'); break;
+    case 'midnight': globalTimeOfDay = 0.0; globalTimeDirty = true; broadcastEverywhere({ type: 'timeSync', t: globalTimeOfDay }); sendSystem(send, 'Heure réglée: minuit.', '#7fd87f'); break;
     case 'time': {
       const t = parseTimeArg(arg);
       if (t == null) return sendSystem(send, 'Usage: /time <0-23 | day | night | morning | sunset>', '#ff8080');
@@ -356,12 +442,21 @@ function handleCommand(send, broadcast, me, room, body) {
     }
     case 'say': {
       if (!arg) return;
-      broadcast(room, { type: 'chat', from: me.name + ' [ADMIN]', color: '#ffd166', text: arg });
+      const payload = { type: 'chat', from: me.name + ' [ADMIN]', color: '#ffd166', text: arg };
+      pushRoomChat(room, { type: 'chat', from: payload.from, color: payload.color, text: payload.text, ts: Date.now() });
+      broadcast(room, payload);
       break;
     }
     case 'announce': case 'broadcast': {
       if (!arg) return;
       broadcastEverywhere({ type: 'announce', from: me.name, text: arg });
+      break;
+    }
+    case 'me': {
+      if (!arg) return;
+      const payload = { type: 'chat', from: '*', color: '#ffd166', text: `${me.name} ${arg}` };
+      pushRoomChat(room, { type: 'chat', from: payload.from, color: payload.color, text: payload.text, ts: Date.now() });
+      broadcast(room, payload);
       break;
     }
     case 'kick': {
@@ -464,6 +559,8 @@ wss.on('connection', (ws) => {
         type: 'welcome',
         you: { id: playerId, name, color },
         room: { id: room.id, name: room.name, seed: room.seed },
+        commandList: isAdmin(name) ? ADMIN_COMMANDS : PUBLIC_COMMANDS,
+        recentChat: room.chatHistory || [],
         timeOfDay: globalTimeOfDay,
         edits: room.edits,
         drops: dropsSnapshot,
@@ -598,6 +695,7 @@ wss.on('connection', (ws) => {
         } else {
           const adminTag = isAdmin(me.username) ? ' [ADMIN]' : '';
           const color = isAdmin(me.username) ? '#ffd166' : me.color;
+          pushRoomChat(room, { type: 'chat', from: me.name + adminTag, color, text, ts: Date.now() });
           broadcast(room, { type: 'chat', from: me.name + adminTag, color, text });
         }
         break;
