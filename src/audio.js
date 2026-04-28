@@ -4,6 +4,8 @@ import { BLOCK } from './blocks.js';
 export class Audio {
   constructor() {
     this.ctx = null;
+    this.master = null;
+    this.volume = 1;
     this.lastStep = 0;
   }
 
@@ -11,6 +13,9 @@ export class Audio {
     if (!this.ctx) {
       try {
         this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        this.master = this.ctx.createGain();
+        this.master.gain.value = this.volume;
+        this.master.connect(this.ctx.destination);
       } catch (e) { /* no audio */ }
     }
     if (this.ctx?.state === 'suspended') this.ctx.resume();
@@ -32,7 +37,7 @@ export class Audio {
     filter.frequency.value = filterFreq;
     const gain = ctx.createGain();
     gain.gain.value = gainValue;
-    src.connect(filter).connect(gain).connect(ctx.destination);
+    src.connect(filter).connect(gain).connect(this.master || ctx.destination);
     src.start();
     src.stop(ctx.currentTime + duration);
   }
@@ -47,7 +52,7 @@ export class Audio {
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(gainValue, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
-    osc.connect(gain).connect(ctx.destination);
+    osc.connect(gain).connect(this.master || ctx.destination);
     osc.start();
     osc.stop(ctx.currentTime + duration);
   }
@@ -80,5 +85,10 @@ export class Audio {
     if (now - this.lastStep < 340) return;
     this.lastStep = now;
     this._noise(0.08, 500, 0.12);
+  }
+
+  setVolume(v01) {
+    this.volume = Math.max(0, Math.min(1, Number(v01) || 0));
+    if (this.master && this.ctx) this.master.gain.setValueAtTime(this.volume, this.ctx.currentTime);
   }
 }

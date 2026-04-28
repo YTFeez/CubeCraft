@@ -112,22 +112,68 @@
     <div class="panel">
       <h1>Cubecraft</h1>
       <p id="menu-subtitle" class="subtitle">Connecté au monde…</p>
-      <ul class="controls">
-        <li><b>Z Q S D</b> - Se déplacer</li>
-        <li><b>Espace</b> - Sauter / nager</li>
-        <li><b>Shift</b> - Courir</li>
-        <li><b>Souris</b> - Regarder</li>
-        <li><b>Clic gauche</b> - Casser (survie : maintenir pour miner ; outil adapté)</li>
-        <li><b>Clic droit</b> - Poser</li>
-        <li><b>1-9</b> ou <b>molette</b> - Bloc actif</li>
-        <li><b>E</b> - Inventaire complet (36 slots)</li>
-        <li><b>G</b> - Jeter le bloc sélectionné au sol</li>
-        <li><b>T</b> - Chat</li>
-        <li><b>Echap</b> - Pause</li>
-      </ul>
-      <div class="menu-buttons">
-        <button id="play-btn">Jouer</button>
-        <button id="leave-btn" class="secondary">Quitter le monde</button>
+
+      <div class="pause-tabs" id="pause-tabs">
+        <button type="button" class="pause-tab active" data-tab="main">Menu</button>
+        <button type="button" class="pause-tab" data-tab="settings">Paramètres</button>
+        <button type="button" class="pause-tab" data-tab="account">Compte</button>
+      </div>
+
+      <div class="pause-pages">
+        <section class="pause-page active" data-tab="main">
+          <div class="menu-buttons">
+            <button id="play-btn">Reprendre</button>
+            <button id="leave-btn" class="secondary">Quitter le monde</button>
+          </div>
+          <ul class="controls">
+            <li><b>Z Q S D</b> - Se déplacer</li>
+            <li><b>Espace</b> - Sauter / nager</li>
+            <li><b>Shift</b> - Crouch</li>
+            <li><b>Ctrl</b> - Sprint</li>
+            <li><b>V</b> - Changer de vue</li>
+            <li><b>E</b> - Inventaire</li>
+            <li><b>T</b> - Chat</li>
+            <li><b>Echap</b> - Pause</li>
+          </ul>
+        </section>
+
+        <section class="pause-page" data-tab="settings">
+          <div class="settings-grid">
+            <label class="setting-row">
+              <span>Main affichée</span>
+              <select id="setting-hand">
+                <option value="right">Droite</option>
+                <option value="left">Gauche</option>
+              </select>
+            </label>
+            <label class="setting-row">
+              <span>FOV</span>
+              <input id="setting-fov" type="range" min="60" max="110" step="1" />
+              <b id="setting-fov-value">75</b>
+            </label>
+            <label class="setting-row">
+              <span>Sons</span>
+              <input id="setting-volume" type="range" min="0" max="100" step="1" />
+              <b id="setting-volume-value">100%</b>
+            </label>
+            <label class="setting-row">
+              <span>Jump auto</span>
+              <input id="setting-autojump" type="checkbox" />
+            </label>
+            <label class="setting-row">
+              <span>Sprint lock</span>
+              <input id="setting-sprintlock" type="checkbox" />
+            </label>
+          </div>
+          <div class="settings-note">Keybinds: ZQSD, Espace, Shift (crouch), Ctrl (sprint), E, T, V, G.</div>
+        </section>
+
+        <section class="pause-page" data-tab="account">
+          <div class="account-actions">
+            <button id="pause-logout-btn" class="secondary">Déconnexion</button>
+            <button id="pause-delete-account-btn" class="secondary danger">Supprimer le compte</button>
+          </div>
+        </section>
       </div>
       <p class="hint"><b>Faction</b> et <b>Minage</b> sont en mode survie : casse pour récolter, pose pour consommer, attention aux chutes, à la lave et à la noyade. <b>Événement</b> et <b>Mini-jeux & PvP</b> sont en créatif.</p>
     </div>

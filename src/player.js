@@ -34,6 +34,8 @@ export class Player {
     this.eyeHeight = EYE;
     this.viewMode = 0; // 0: first person, 1: third back, 2: third front
     this._walkCycle = 0;
+    this.autoJump = false;
+    this.sprintLock = false;
     this.scene = scene;
     this.avatar = null;
 
@@ -200,7 +202,8 @@ export class Player {
     let speedMult = 1;
     if (this.inWater) speedMult = 0.55;
     if (this.crouching) speedMult *= 0.45;
-    const speed = (this.running ? RUN_SPEED : WALK_SPEED) * speedMult;
+    const sprinting = this.running || this.sprintLock;
+    const speed = (sprinting ? RUN_SPEED : WALK_SPEED) * speedMult;
 
     // Convert local -> world using yaw.
     const cosY = Math.cos(this.yaw);
@@ -260,6 +263,20 @@ export class Player {
     this._moveAxis(this.velocity.x * dt, 0, 0);
     this._moveAxis(0, this.velocity.y * dt, 0);
     this._moveAxis(0, 0, this.velocity.z * dt);
+
+    // Basic Minecraft-like auto jump.
+    if (this.autoJump && !this.inWater && this.onGround && len > 0.2 && !this.crouching) {
+      const ahead = 0.38;
+      const tx = this.position.x + forwardX * ahead;
+      const tz = this.position.z + forwardZ * ahead;
+      const feetY = Math.floor(this.position.y - HEIGHT / 2 + 0.02);
+      const blockAhead = this.world.getBlock(Math.floor(tx), feetY, Math.floor(tz));
+      const headAhead = this.world.getBlock(Math.floor(tx), feetY + 1, Math.floor(tz));
+      if (isSolid(blockAhead) && !isFluid(blockAhead) && headAhead === BLOCK.AIR) {
+        this.velocity.y = Math.max(this.velocity.y, JUMP_SPEED * 0.82);
+        this.onGround = false;
+      }
+    }
 
     // Fell out of world.
     if (this.position.y < -20) {
@@ -510,5 +527,10 @@ export class Player {
     document.removeEventListener('mousemove', this._onMouseMove);
     window.removeEventListener('keydown', this._onKeyDown);
     window.removeEventListener('keyup', this._onKeyUp);
+  }
+
+  setPreferences({ autoJump = this.autoJump, sprintLock = this.sprintLock } = {}) {
+    this.autoJump = !!autoJump;
+    this.sprintLock = !!sprintLock;
   }
 }

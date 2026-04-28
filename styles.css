@@ -303,6 +303,64 @@ html, body {
   justify-content: center;
 }
 
+.pause-tabs {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin: 10px 0 12px;
+}
+
+.pause-tab {
+  min-width: 130px;
+}
+
+.pause-pages {
+  min-height: 250px;
+}
+
+.pause-page { display: none; }
+.pause-page.active { display: block; }
+
+.pause-tab.active {
+  filter: brightness(1.2);
+}
+
+.settings-grid {
+  display: grid;
+  gap: 10px;
+  margin: 8px 0;
+}
+
+.setting-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.setting-row input[type="range"] {
+  width: 180px;
+}
+
+.settings-note {
+  margin-top: 8px;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.account-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 280px;
+  margin: 14px auto 0;
+}
+
+body.left-hand #hotbar {
+  left: 12px;
+  right: auto;
+}
+
 button {
   background: linear-gradient(180deg, #4caf50, #388e3c);
   color: white;

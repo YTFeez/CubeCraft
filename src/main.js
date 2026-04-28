@@ -36,6 +36,17 @@ const loading      = document.getElementById('loading');
 const progressBar  = document.getElementById('progress-bar');
 const playBtn      = document.getElementById('play-btn');
 const leaveBtn     = document.getElementById('leave-btn');
+const pauseTabs    = document.querySelectorAll('.pause-tab');
+const pausePages   = document.querySelectorAll('.pause-page');
+const settingHand  = document.getElementById('setting-hand');
+const settingFov   = document.getElementById('setting-fov');
+const settingFovValue = document.getElementById('setting-fov-value');
+const settingVolume = document.getElementById('setting-volume');
+const settingVolumeValue = document.getElementById('setting-volume-value');
+const settingAutoJump = document.getElementById('setting-autojump');
+const settingSprintLock = document.getElementById('setting-sprintlock');
+const pauseLogoutBtn = document.getElementById('pause-logout-btn');
+const pauseDeleteAccountBtn = document.getElementById('pause-delete-account-btn');
 const clockEl      = document.getElementById('clock');
 const coordsEl     = document.getElementById('coords');
 const fpsEl        = document.getElementById('fps');
@@ -186,14 +197,15 @@ function showSelectionScreen() {
   ensureAtlas().catch(() => {});
 }
 
-logoutBtn.addEventListener('click', async () => {
+async function doLogout() {
   if (auth?.token) await postJson('/api/logout', {}, auth.token).catch(() => {});
   clearAuth();
   auth = null;
+  if (session) leaveSession();
   showAuthScreen();
-});
+}
 
-deleteAccountBtn?.addEventListener('click', async () => {
+async function doDeleteAccount() {
   if (!auth?.token) return;
   const ok = confirm(
     `Supprimer définitivement le compte "${auth.name}" ?\n\n` +
@@ -210,8 +222,13 @@ deleteAccountBtn?.addEventListener('click', async () => {
   } catch {}
   clearAuth();
   auth = null;
+  if (session) leaveSession();
   showAuthScreen();
-});
+}
+
+logoutBtn.addEventListener('click', async () => { await doLogout(); });
+
+deleteAccountBtn?.addEventListener('click', async () => { await doDeleteAccount(); });
 
 // Bootstrap: try existing token, otherwise show login.
 (async () => {
@@ -241,7 +258,98 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.85;
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 800);
-const baseFov = 75;
+let baseFov = 75;
+
+const PAUSE_SETTINGS_KEY = 'cubecraft-pause-settings';
+const pauseSettings = {
+  hand: 'right',
+  fov: 75,
+  volume: 100,
+  autoJump: false,
+  sprintLock: false,
+  activeTab: 'main',
+};
+
+function loadPauseSettings() {
+  try {
+    const raw = localStorage.getItem(PAUSE_SETTINGS_KEY);
+    if (!raw) return;
+    const p = JSON.parse(raw);
+    if (p && typeof p === 'object') Object.assign(pauseSettings, p);
+  } catch {}
+}
+
+function savePauseSettings() {
+  try { localStorage.setItem(PAUSE_SETTINGS_KEY, JSON.stringify(pauseSettings)); } catch {}
+}
+
+function applyPauseSettingsUI() {
+  if (settingHand) settingHand.value = pauseSettings.hand === 'left' ? 'left' : 'right';
+  if (settingFov) settingFov.value = String(pauseSettings.fov | 0);
+  if (settingFovValue) settingFovValue.textContent = String(pauseSettings.fov | 0);
+  if (settingVolume) settingVolume.value = String(Math.max(0, Math.min(100, pauseSettings.volume | 0)));
+  if (settingVolumeValue) settingVolumeValue.textContent = `${Math.max(0, Math.min(100, pauseSettings.volume | 0))}%`;
+  if (settingAutoJump) settingAutoJump.checked = !!pauseSettings.autoJump;
+  if (settingSprintLock) settingSprintLock.checked = !!pauseSettings.sprintLock;
+  document.body.classList.toggle('left-hand', pauseSettings.hand === 'left');
+}
+
+function applyPauseSettingsRuntime() {
+  baseFov = Math.max(60, Math.min(110, pauseSettings.fov | 0));
+  camera.fov = baseFov;
+  camera.updateProjectionMatrix();
+  if (session?.audio?.setVolume) session.audio.setVolume((pauseSettings.volume | 0) / 100);
+  if (session?.player?.setPreferences) {
+    session.player.setPreferences({
+      autoJump: !!pauseSettings.autoJump,
+      sprintLock: !!pauseSettings.sprintLock,
+    });
+  }
+}
+
+function setPauseTab(tab) {
+  const safe = ['main', 'settings', 'account'].includes(tab) ? tab : 'main';
+  pauseSettings.activeTab = safe;
+  pauseTabs.forEach(t => t.classList.toggle('active', t.dataset.tab === safe));
+  pausePages.forEach(p => p.classList.toggle('active', p.dataset.tab === safe));
+  savePauseSettings();
+}
+
+loadPauseSettings();
+applyPauseSettingsUI();
+applyPauseSettingsRuntime();
+pauseTabs.forEach(tab => tab.addEventListener('click', () => setPauseTab(tab.dataset.tab || 'main')));
+setPauseTab(pauseSettings.activeTab || 'main');
+
+settingHand?.addEventListener('change', () => {
+  pauseSettings.hand = settingHand.value === 'left' ? 'left' : 'right';
+  applyPauseSettingsUI();
+  savePauseSettings();
+});
+settingFov?.addEventListener('input', () => {
+  pauseSettings.fov = Math.max(60, Math.min(110, Number(settingFov.value) || 75));
+  applyPauseSettingsUI();
+  applyPauseSettingsRuntime();
+  savePauseSettings();
+});
+settingVolume?.addEventListener('input', () => {
+  pauseSettings.volume = Math.max(0, Math.min(100, Number(settingVolume.value) || 0));
+  applyPauseSettingsUI();
+  applyPauseSettingsRuntime();
+  savePauseSettings();
+});
+settingAutoJump?.addEventListener('change', () => {
+  pauseSettings.autoJump = !!settingAutoJump.checked;
+  applyPauseSettingsRuntime();
+  savePauseSettings();
+});
+settingSprintLock?.addEventListener('change', () => {
+  pauseSettings.sprintLock = !!settingSprintLock.checked;
+  applyPauseSettingsRuntime();
+  savePauseSettings();
+});
+pauseLogoutBtn?.addEventListener('click', async () => { await doLogout(); });
+pauseDeleteAccountBtn?.addEventListener('click', async () => { await doDeleteAccount(); });
 
 /** Atlas blocs (async : charge le resource pack `/texture-pack/` par-dessus le procédural). */
 let atlasCanvas = null;
@@ -379,7 +487,12 @@ async function createSession(theme, name) {
   // === World + entities ===
   const world = new World(theme, scene, opaqueMat, transparentMat, waterMat);
   const audio = new Audio();
+  audio.setVolume((pauseSettings.volume | 0) / 100);
   const player = new Player(camera, world, canvas, scene);
+  player.setPreferences({
+    autoJump: !!pauseSettings.autoJump,
+    sprintLock: !!pauseSettings.sprintLock,
+  });
   const particles = new Particles(scene, atlasTex);
   const remotePlayers = new RemotePlayers(scene);
   const itemDrops = new ItemDrops(scene, atlasCanvas);
@@ -939,6 +1052,8 @@ leaveBtn.addEventListener('click', () => {
   leaveSession();
 });
 
+menu.addEventListener('contextmenu', (e) => e.preventDefault());
+
 document.addEventListener('pointerlockchange', () => {
   if (!session) return;
   const inventoryEl = document.getElementById('inventory');
@@ -947,6 +1062,7 @@ document.addEventListener('pointerlockchange', () => {
       && !chatInput.classList.contains('visible')
       && deathOverlay.classList.contains('hidden')
       && !inventoryOpen) {
+    setPauseTab('main');
     menu.classList.remove('hidden');
   }
 });
@@ -1018,15 +1134,16 @@ function animate() {
   // View bobbing + FOV
   const hSpeed = Math.hypot(s.player.velocity.x, s.player.velocity.z);
   const moving = s.player.onGround && hSpeed > 0.5 && s.player.locked && !s.player.inWater;
-  if (moving) s.bobPhase += dt * (s.player.running ? 12 : 8);
-  const bobAmp = moving ? (s.player.running ? 0.07 : 0.045) : 0;
+  const sprinting = s.player.running || s.player.sprintLock;
+  if (moving) s.bobPhase += dt * (sprinting ? 12 : 8);
+  const bobAmp = moving ? (sprinting ? 0.07 : 0.045) : 0;
   const bobY = Math.sin(s.bobPhase) * bobAmp;
   const bobX = Math.cos(s.bobPhase * 0.5) * bobAmp * 0.5;
   const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
   camera.position.addScaledVector(right, bobX);
   camera.position.y += bobY;
 
-  const targetFov = baseFov + (s.player.running && moving ? 6 : 0) + (s.player.inWater ? -3 : 0);
+  const targetFov = baseFov + (sprinting && moving ? 6 : 0) + (s.player.inWater ? -3 : 0);
   s.currentFov += (targetFov - s.currentFov) * Math.min(1, dt * 8);
   if (Math.abs(s.currentFov - camera.fov) > 0.01) {
     camera.fov = s.currentFov;
