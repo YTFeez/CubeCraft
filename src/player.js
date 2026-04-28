@@ -220,17 +220,21 @@ export class Player {
 
     // Gravity and jump (water gives buoyancy + ability to swim up).
     if (this.inWater) {
+      const headFluid = isFluid(this._blockAtEye());
+      const feetFluid = isFluid(this._blockAtFeet());
       // Buoyancy: dampened gravity, hold space to swim up.
       const grav = GRAVITY * 0.18;
       this.velocity.y -= grav * dt;
       if (this.keys.has('Space')) {
-        this.velocity.y += GRAVITY * 0.4 * dt;
-        // Let the player "hop" out of shallow water near edges.
-        if (this.onGround) this.velocity.y = Math.max(this.velocity.y, JUMP_SPEED * 0.92);
-        if (this.velocity.y > 4.5) this.velocity.y = 4.5;
+        // Continuous swim-up acceleration while space is held.
+        this.velocity.y += GRAVITY * 0.75 * dt;
+        // Near the surface, give an extra pop so holding space exits water.
+        if (!headFluid && feetFluid) this.velocity.y = Math.max(this.velocity.y, JUMP_SPEED * 0.98);
+        if (this.onGround) this.velocity.y = Math.max(this.velocity.y, JUMP_SPEED * 0.95);
+        if (this.velocity.y > 7.2) this.velocity.y = 7.2;
       }
       // Strong drag in water so you don't sink/rise too fast.
-      const yDrag = this.keys.has('Space') ? 0.12 : 0.05;
+      const yDrag = this.keys.has('Space') ? 0.32 : 0.05;
       this.velocity.y *= Math.pow(yDrag, dt);
       if (this.velocity.y < -3.5) this.velocity.y = -3.5;
     } else {
