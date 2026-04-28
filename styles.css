@@ -1069,7 +1069,7 @@ select,
     top center / 512px auto no-repeat;
 }
 
-/* --- Inventaire ultra personnalise (grand + responsive) --- */
+/* --- Inventaire ultra personnalise avec onglets --- */
 #inventory {
   align-items: center;
   justify-content: center;
@@ -1078,22 +1078,60 @@ select,
 }
 
 #inventory .inv-panel {
-  --slot: clamp(46px, 4.8vw, 68px);
-  --gap: clamp(5px, 0.55vw, 9px);
-  position: relative;
-  width: min(96vw, 980px);
-  aspect-ratio: 1.52 / 1;
-  padding: 0;
+  --slot: clamp(44px, 3.9vw, 58px);
+  --gap: clamp(4px, 0.42vw, 7px);
+  width: min(96vw, 1080px);
+  min-height: min(90vh, 760px);
+  padding: 14px;
   border: 2px solid #121212;
   border-radius: 14px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55), inset 0 0 0 2px rgba(255, 255, 255, 0.18);
-  background: linear-gradient(180deg, rgba(16, 19, 28, 0.9), rgba(11, 12, 17, 0.94));
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55), inset 0 0 0 2px rgba(255, 255, 255, 0.14);
+  background: linear-gradient(180deg, rgba(16, 19, 28, 0.93), rgba(11, 12, 17, 0.95));
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-#inventory .inv-panel h2,
-#inventory .inv-panel .hint {
+#inventory .inv-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+#inventory .inv-tab {
+  min-width: 140px;
+  padding: 8px 12px;
+}
+
+#inventory .inv-tab.active {
+  filter: brightness(1.2);
+}
+
+#inventory .inv-pages {
+  flex: 1;
+  min-height: 0;
+}
+
+#inventory .inv-page {
   display: none;
+  height: 100%;
+}
+
+#inventory .inv-page.active {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#inventory .inv-page h2 {
+  margin: 0 0 2px 0;
+  font-size: 16px;
+}
+
+#inventory [data-tab="inventory"] .hint {
+  opacity: 0.85;
+  margin: 2px 0 0;
 }
 
 #inventory .inv-sep {
@@ -1102,40 +1140,30 @@ select,
 
 #inventory .inv-grid,
 #inventory .inv-hotbar {
-  position: absolute;
   display: grid;
   grid-template-columns: repeat(9, var(--slot));
   gap: var(--gap);
 }
 
-#inventory #inv-main {
-  left: 5.8%;
-  top: 48.5%;
-}
-
-#inventory #inv-hotbar {
-  left: 5.8%;
-  top: 82.8%;
-}
-
 #inventory #inv-craft.inv-craft-mc {
-  position: absolute;
-  left: 61.5%;
-  top: 14%;
   margin: 0;
   display: block;
+  align-self: flex-start;
 }
 
-#inventory #inv-craft .inv-palette-title,
-#inventory #inv-craft .craft-arrow {
+#inventory #inv-craft .inv-palette-title {
   display: none;
 }
 
 #inventory #inv-craft .craft-table-row {
   display: grid;
-  grid-template-columns: auto var(--slot);
-  column-gap: clamp(20px, 2.2vw, 34px);
+  grid-template-columns: auto auto auto;
+  column-gap: clamp(12px, 1.4vw, 20px);
   align-items: center;
+}
+
+#inventory #inv-craft .craft-arrow {
+  display: block;
 }
 
 #inventory #inv-craft .craft-grid-2x2 {
@@ -1178,11 +1206,23 @@ select,
   text-shadow: 1px 1px 0 #000;
 }
 
+#inventory .inv-recipes-list {
+  flex: 1;
+  max-height: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+#inventory .inv-placeholder-card {
+  margin-top: 8px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
 #inventory .inv-palette-wrap {
-  position: absolute;
-  left: calc(100% + 14px);
-  top: 0;
-  width: min(280px, 24vw);
-  max-height: 100%;
-  overflow: auto;
+  margin-top: 8px;
 }

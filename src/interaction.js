@@ -59,6 +59,7 @@ export class Interaction {
     // Slot held by the cursor while the inventory overlay is open.
     this.carried = null; // { id, count } | null
     this.invOpen = false;
+    this.activeInvTab = 'inventory';
 
     /** @type {({ id: number, count: number } | null)[] | null} Grille 3×3 (survie uniquement). */
     this.craftGrid = this.mode === 'survival' ? new Array(CRAFT_SLOT_COUNT).fill(null) : null;
@@ -182,20 +183,55 @@ export class Interaction {
       overlay.className = 'overlay hidden inventory-overlay';
       overlay.innerHTML = `
         <div class="inv-panel">
-          <h2>Inventaire</h2>
-          <div class="inv-grid" id="inv-main"></div>
-          <div class="inv-sep"></div>
-          <div class="inv-hotbar" id="inv-hotbar"></div>
-          <div id="inv-craft" class="inv-craft hidden"></div>
-          <div class="inv-palette-wrap hidden" id="inv-palette-wrap">
-            <div class="inv-palette-title">Palette créative — clic pour prendre un stack de 64</div>
-            <div class="inv-palette" id="inv-palette"></div>
+          <div class="inv-tabs" id="inv-tabs">
+            <button type="button" class="inv-tab active" data-tab="inventory">Inventaire</button>
+            <button type="button" class="inv-tab" data-tab="recipes">Livre recettes</button>
+            <button type="button" class="inv-tab" data-tab="faction">Faction</button>
+            <button type="button" class="inv-tab" data-tab="shop">Shop</button>
           </div>
-          <p class="hint">E ou Échap pour fermer · Clic gauche : prendre/déposer le stack · Clic droit : déposer 1 / prendre la moitié · Maj+clic : auto-rangement entre hotbar et inventaire principal</p>
+          <div class="inv-pages">
+            <section class="inv-page active" data-tab="inventory">
+              <h2>Inventaire</h2>
+              <div id="inv-craft" class="inv-craft hidden"></div>
+              <div class="inv-grid" id="inv-main"></div>
+              <div class="inv-sep"></div>
+              <div class="inv-hotbar" id="inv-hotbar"></div>
+              <div class="inv-palette-wrap hidden" id="inv-palette-wrap">
+                <div class="inv-palette-title">Palette créative — clic pour prendre un stack de 64</div>
+                <div class="inv-palette" id="inv-palette"></div>
+              </div>
+              <p class="hint">E ou Échap pour fermer · Clic gauche : prendre/déposer le stack · Clic droit : déposer 1 / prendre la moitié · Maj+clic : auto-rangement</p>
+            </section>
+
+            <section class="inv-page" data-tab="recipes">
+              <h2>Livre de recettes</h2>
+              <div class="recipe-book-list inv-recipes-list" id="inv-recipe-book-tab"></div>
+            </section>
+
+            <section class="inv-page" data-tab="faction">
+              <h2>Faction</h2>
+              <div class="inv-placeholder-card">
+                <p>Gestion de faction (grade, membres, alliances) prete pour branchement serveur.</p>
+                <button type="button" class="secondary">Creer une faction</button>
+              </div>
+            </section>
+
+            <section class="inv-page" data-tab="shop">
+              <h2>Shop</h2>
+              <div class="inv-placeholder-card">
+                <p>Boutique en jeu : achats/ventes, economie et prix dynamiques.</p>
+                <button type="button" class="secondary">Ouvrir la boutique</button>
+              </div>
+            </section>
+          </div>
         </div>
         <div class="inv-cursor" id="inv-cursor"></div>
       `;
       document.body.appendChild(overlay);
+
+      overlay.querySelectorAll('.inv-tab').forEach(btn => {
+        btn.addEventListener('click', () => this._setInventoryTab(btn.dataset.tab || 'inventory'));
+      });
     }
     this._invOverlayEl = overlay;
     this._invMainEl = overlay.querySelector('#inv-main');
@@ -203,6 +239,7 @@ export class Interaction {
     this._invPaletteWrap = overlay.querySelector('#inv-palette-wrap');
     this._invPaletteEl = overlay.querySelector('#inv-palette');
     this._invCursorEl = overlay.querySelector('#inv-cursor');
+    this._invRecipeBookEl = overlay.querySelector('#inv-recipe-book-tab');
 
     // Build empty slot grid (main 27 then hotbar 9). We render hotbar twice:
     // the bottom row of the inventory grid mirrors the live hotbar so the
@@ -254,6 +291,8 @@ export class Interaction {
       }
     }
     this._buildCraftingList();
+    this._buildRecipeBookTab();
+    this._setInventoryTab(this.activeInvTab);
 
     // Click outside the panel: drop the carried stack back into the world.
     overlay.addEventListener('mousedown', (e) => {
@@ -282,6 +321,62 @@ export class Interaction {
   _recipeCanFill(recipe) {
     const need = recipeIngredientMap(recipe);
     return hasIngredients(this.slots, this.craftGrid || [], need);
+  }
+
+  _setInventoryTab(tab) {
+    const safeTab = ['inventory', 'recipes', 'faction', 'shop'].includes(tab) ? tab : 'inventory';
+    this.activeInvTab = safeTab;
+    if (!this._invOverlayEl) return;
+    this._invOverlayEl.querySelectorAll('.inv-tab').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.tab === safeTab);
+    });
+    this._invOverlayEl.querySelectorAll('.inv-page').forEach(page => {
+      page.classList.toggle('active', page.dataset.tab === safeTab);
+    });
+  }
+
+  _buildRecipeBookTab() {
+    const list = this._invRecipeBookEl;
+    if (!list) return;
+    list.innerHTML = '';
+    if (this.mode !== 'survival') {
+      const txt = document.createElement('div');
+      txt.className = 'inv-placeholder-card';
+      txt.textContent = 'Le livre de recettes est disponible en mode survie.';
+      list.appendChild(txt);
+      return;
+    }
+    for (const recipe of RECIPES) {
+      const row = document.createElement('div');
+      row.className = 'recipe-book-row';
+      row.dataset.recipeId = recipe.id;
+      const icon = document.createElement('div');
+      icon.className = 'inv-icon recipe-book-icon';
+      icon.style.backgroundImage = `url(${blockIconDataURL(recipe.result.id, this.atlasCanvas)})`;
+      icon.style.backgroundSize = 'cover';
+      const label = document.createElement('span');
+      label.className = 'recipe-book-label';
+      const nm = BLOCK_INFO[recipe.result.id]?.name || recipe.id;
+      label.textContent = `${nm} ×${recipe.result.count}`;
+      row.appendChild(icon);
+      row.appendChild(label);
+      const can = this._recipeCanFill(recipe);
+      row.classList.toggle('recipe-book-row-disabled', !can);
+      row.title = can ? 'Clique pour placer les ingredients dans le craft' : 'Objets insuffisants';
+      row.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        if (e.button !== 0 || !this.craftGrid) return;
+        if (!this._recipeCanFill(recipe)) return;
+        if (!fillRecipeFromInventory(this.slots, this.craftGrid, recipe)) return;
+        this._setInventoryTab('inventory');
+        this._refreshHotbarDOM();
+        this._refreshInventoryDOM();
+        this._refreshCraftingDOM();
+        this._refreshRecipeBookRows();
+        if (this.onInventoryChange) this.onInventoryChange();
+      });
+      list.appendChild(row);
+    }
   }
 
   _buildCraftingList() {
@@ -407,8 +502,8 @@ export class Interaction {
   }
 
   _refreshRecipeBookRows() {
-    if (!this._invCraftEl) return;
-    this._invCraftEl.querySelectorAll('.recipe-book-row').forEach(row => {
+    if (!this._invRecipeBookEl) return;
+    this._invRecipeBookEl.querySelectorAll('.recipe-book-row').forEach(row => {
       const id = row.dataset.recipeId;
       const recipe = RECIPES.find(r => r.id === id);
       if (!recipe) return;
@@ -606,6 +701,8 @@ export class Interaction {
     this._invOverlayEl.classList.remove('hidden');
     this._refreshInventoryDOM();
     this._buildCraftingList();
+    this._buildRecipeBookTab();
+    this._setInventoryTab(this.activeInvTab);
     if (document.pointerLockElement) document.exitPointerLock();
   }
 
