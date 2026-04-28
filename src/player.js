@@ -6,6 +6,7 @@ import { WORLD_HEIGHT } from './world.js';
 const HALF_W = 0.3;   // half-width
 const HEIGHT = 1.8;
 const EYE = 1.62;
+const CROUCH_EYE = 1.32;
 const GRAVITY = 28;
 const JUMP_SPEED = 9.2;
 const WALK_SPEED = 4.6;
@@ -13,7 +14,7 @@ const RUN_SPEED = 7.4;
 const AIR_CONTROL = 0.35;
 
 export class Player {
-  constructor(camera, world, domElement) {
+  constructor(camera, world, domElement, scene = null) {
     this.camera = camera;
     this.world = world;
     this.dom = domElement;
@@ -28,7 +29,13 @@ export class Player {
 
     this.keys = new Set();
     this.running = false;
+    this.crouching = false;
     this.locked = false;
+    this.eyeHeight = EYE;
+    this.viewMode = 0; // 0: first person, 1: third back, 2: third front
+    this._walkCycle = 0;
+    this.scene = scene;
+    this.avatar = null;
 
     // --- Survival state ---
     this.surviveMode = false;
@@ -53,6 +60,7 @@ export class Player {
     this._onKeyDown = this._onKeyDown.bind(this);
     this._onKeyUp = this._onKeyUp.bind(this);
     this._onPointerLockChange = this._onPointerLockChange.bind(this);
+    this._buildAvatar();
 
     document.addEventListener('pointerlockchange', this._onPointerLockChange);
     document.addEventListener('mousemove', this._onMouseMove);
@@ -80,11 +88,14 @@ export class Player {
   _onKeyDown(e) {
     if (e.repeat) return;
     this.keys.add(e.code);
-    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.running = true;
+    if (e.code === 'ControlLeft' || e.code === 'ControlRight') this.running = true;
+    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.crouching = true;
+    if (e.code === 'KeyV') this.viewMode = (this.viewMode + 1) % 3;
   }
   _onKeyUp(e) {
     this.keys.delete(e.code);
-    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.running = false;
+    if (e.code === 'ControlLeft' || e.code === 'ControlRight') this.running = false;
+    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.crouching = false;
   }
 
   // --- Survival API ---
@@ -168,10 +179,7 @@ export class Player {
     // If dead, freeze input but keep camera responsive.
     if (this.dead) {
       this.velocity.set(0, 0, 0);
-      this.camera.position.set(this.position.x, this.position.y + EYE - HEIGHT / 2, this.position.z);
-      this.camera.rotation.set(0, 0, 0);
-      this.camera.rotateY(this.yaw);
-      this.camera.rotateX(this.pitch);
+      this._updateViewAndAvatar(dt);
       return;
     }
 
@@ -191,6 +199,7 @@ export class Player {
 
     let speedMult = 1;
     if (this.inWater) speedMult = 0.55;
+    if (this.crouching) speedMult *= 0.45;
     const speed = (this.running ? RUN_SPEED : WALK_SPEED) * speedMult;
 
     // Convert local -> world using yaw.
@@ -261,11 +270,91 @@ export class Player {
     // --- Survival ticks ---
     if (this.surviveMode && !this.dead) this._tickSurvival(dt);
 
-    // Update camera.
-    this.camera.position.set(this.position.x, this.position.y + EYE - HEIGHT / 2, this.position.z);
+    this._updateViewAndAvatar(dt);
+  }
+
+  _updateViewAndAvatar(dt) {
+    const tEye = this.crouching ? CROUCH_EYE : EYE;
+    const k = Math.min(1, dt * 12);
+    this.eyeHeight += (tEye - this.eyeHeight) * k;
+
+    const headX = this.position.x;
+    const headY = this.position.y + this.eyeHeight - HEIGHT / 2;
+    const headZ = this.position.z;
+
     this.camera.rotation.set(0, 0, 0);
-    this.camera.rotateY(this.yaw);
-    this.camera.rotateX(this.pitch);
+    if (this.viewMode === 2) {
+      this.camera.rotateY(this.yaw + Math.PI);
+      this.camera.rotateX(-this.pitch * 0.35);
+    } else {
+      this.camera.rotateY(this.yaw);
+      this.camera.rotateX(this.pitch);
+    }
+
+    if (this.viewMode === 0) {
+      this.camera.position.set(headX, headY, headZ);
+    } else {
+      const dist = this.viewMode === 1 ? 3.3 : -2.4;
+      const up = this.crouching ? 0.55 : 0.8;
+      const sinY = Math.sin(this.yaw);
+      const fx = -sinY;
+      const fz = -Math.cos(this.yaw);
+      const camX = headX - fx * dist;
+      const camY = headY + up;
+      const camZ = headZ - fz * dist;
+      this.camera.position.set(camX, camY, camZ);
+    }
+
+    if (!this.avatar) return;
+    const planar = Math.hypot(this.velocity.x, this.velocity.z);
+    this._walkCycle += planar * dt * 5.6;
+    const swing = Math.sin(this._walkCycle) * Math.min(0.75, planar * 0.2);
+    const crouchDrop = this.crouching ? 0.22 : 0;
+
+    this.avatar.group.visible = this.viewMode !== 0;
+    this.avatar.group.position.set(this.position.x, this.position.y - HEIGHT / 2, this.position.z);
+    this.avatar.group.rotation.y = this.yaw + Math.PI;
+    this.avatar.body.position.y = 0.9 - crouchDrop;
+    this.avatar.head.position.y = 1.55 - crouchDrop * 0.4;
+    this.avatar.armL.position.y = 1.04 - crouchDrop;
+    this.avatar.armR.position.y = 1.04 - crouchDrop;
+    this.avatar.legL.position.y = 0.34;
+    this.avatar.legR.position.y = 0.34;
+    this.avatar.armL.rotation.x = swing;
+    this.avatar.armR.rotation.x = -swing;
+    this.avatar.legL.rotation.x = -swing;
+    this.avatar.legR.rotation.x = swing;
+  }
+
+  _buildAvatar() {
+    if (!this.scene) return;
+    const group = new THREE.Group();
+    const mat = new THREE.MeshLambertMaterial({ color: 0x6ec6ff });
+    const dark = new THREE.MeshLambertMaterial({ color: 0x2f6f88 });
+    const skin = new THREE.MeshLambertMaterial({ color: 0xe3b28f });
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.72, 0.3), mat);
+    body.position.y = 0.9;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.42), skin);
+    head.position.y = 1.55;
+    const armL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.62, 0.18), dark);
+    const armR = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.62, 0.18), dark);
+    armL.position.set(-0.38, 1.04, 0);
+    armR.position.set(0.38, 1.04, 0);
+    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.68, 0.2), dark);
+    const legR = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.68, 0.2), dark);
+    legL.position.set(-0.14, 0.34, 0);
+    legR.position.set(0.14, 0.34, 0);
+
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+    const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.03), eyeMat);
+    const eyeR = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.03), eyeMat);
+    eyeL.position.set(-0.09, 1.58, -0.22);
+    eyeR.position.set(0.09, 1.58, -0.22);
+
+    group.add(body, head, armL, armR, legL, legR, eyeL, eyeR);
+    this.scene.add(group);
+    this.avatar = { group, body, head, armL, armR, legL, legR };
   }
 
   _moveAxis(dx, dy, dz) {
@@ -406,6 +495,17 @@ export class Player {
   }
 
   destroy() {
+    if (this.avatar?.group) {
+      this.scene?.remove(this.avatar.group);
+      this.avatar.group.traverse((o) => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) {
+          if (Array.isArray(o.material)) o.material.forEach(m => m.dispose());
+          else o.material.dispose();
+        }
+      });
+      this.avatar = null;
+    }
     document.removeEventListener('pointerlockchange', this._onPointerLockChange);
     document.removeEventListener('mousemove', this._onMouseMove);
     window.removeEventListener('keydown', this._onKeyDown);

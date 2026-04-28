@@ -379,7 +379,7 @@ async function createSession(theme, name) {
   // === World + entities ===
   const world = new World(theme, scene, opaqueMat, transparentMat, waterMat);
   const audio = new Audio();
-  const player = new Player(camera, world, canvas);
+  const player = new Player(camera, world, canvas, scene);
   const particles = new Particles(scene, atlasTex);
   const remotePlayers = new RemotePlayers(scene);
   const itemDrops = new ItemDrops(scene, atlasCanvas);
