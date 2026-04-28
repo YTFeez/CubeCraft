@@ -1226,3 +1226,32 @@ select,
 #inventory .inv-palette-wrap {
   margin-top: 8px;
 }
+
+#inventory .inv-cursor {
+  position: fixed;
+  width: var(--slot, 52px);
+  height: var(--slot, 52px);
+  transform: translate(-20%, -20%);
+  pointer-events: none;
+  z-index: 30;
+  display: none;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.65));
+}
+
+#inventory .inv-cursor.visible {
+  display: block;
+}
+
+#inventory .inv-cursor::after {
+  content: attr(data-count);
+  position: absolute;
+  right: 2px;
+  bottom: 0;
+  font-size: clamp(14px, 1.2vw, 20px);
+  color: #fff;
+  text-shadow: 1px 1px 0 #000;
+}
