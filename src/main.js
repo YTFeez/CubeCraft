@@ -424,11 +424,11 @@ async function joinWorld(themeId) {
   try {
     await ensureAtlas();
   } catch (e) {
-    console.error(e);
-    alert('Impossible de charger les textures du jeu.');
-    selectionEl.classList.remove('hidden');
-    loading.classList.add('hidden');
-    return;
+    // Ultra-safe fallback: never block world join because of textures.
+    console.error('ensureAtlas hard-failed, forcing emergency atlas:', e);
+    const fb = buildEmergencyAtlas();
+    atlasCanvas = fb.canvas;
+    atlasTex = fb.texture;
   }
   progressBar.style.width = '10%';
 
