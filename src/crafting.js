@@ -1,6 +1,7 @@
 /**
  * Système de craft type Minecraft : recettes façonnées (3×3) et sans forme.
- * Correspondance par réduction des bords vides (comme la grille vanilla).
+ * Les recettes façonnées acceptent le décalage dans la grille (trim) et le
+ * miroir horizontal (comportement vanilla), mais PAS les rotations.
  */
 
 import { BLOCK } from './blocks.js';
@@ -19,25 +20,11 @@ export const RECIPES = [
     ingredients: [{ id: BLOCK.WOOD, count: 1 }],
     result: { id: BLOCK.PLANKS, count: 4 },
   },
-  // Bâtons : 2 planches en colonne (façonné)
+  // Bâtons : 2 planches en colonne (façonné vanilla).
   {
     type: 'shaped',
     id: 'sticks',
     pattern: ['P  ', 'P  ', '   '],
-    keys: { P: BLOCK.PLANKS },
-    result: { id: BLOCK.STICK, count: 4 },
-  },
-  {
-    type: 'shaped',
-    id: 'sticks_alt',
-    pattern: [' P ', ' P ', '   '],
-    keys: { P: BLOCK.PLANKS },
-    result: { id: BLOCK.STICK, count: 4 },
-  },
-  {
-    type: 'shaped',
-    id: 'sticks_alt2',
-    pattern: ['  P', '  P', '   '],
     keys: { P: BLOCK.PLANKS },
     result: { id: BLOCK.STICK, count: 4 },
   },
@@ -200,35 +187,23 @@ function bboxSize(cells) {
   return { h, w };
 }
 
-function rotateCellsNorm(cells) {
-  const { h, w } = bboxSize(cells);
-  return normCells(cells.map(({ r, c, id }) => ({ r: c, c: h - 1 - r, id })));
-}
-
 function flipHCellsNorm(cells) {
   const w = bboxSize(cells).w;
   return normCells(cells.map(({ r, c, id }) => ({ r, c: w - 1 - c, id })));
 }
 
-/** 8 variantes (4 rotations × miroir horizontal), dédupliquées. */
+/** 2 variantes vanilla : original + miroir horizontal, dédupliquées. */
 function cellPatternVariants(baseNorm) {
   const seen = new Set();
   const out = [];
   const key = (cells) => cells.map(x => `${x.r},${x.c},${x.id}`).sort().join(';');
-  let cur = baseNorm.map(x => ({ ...x }));
-  for (let i = 0; i < 4; i++) {
-    const k1 = key(cur);
-    if (!seen.has(k1)) {
-      seen.add(k1);
-      out.push(cur.map(x => ({ ...x })));
+  const variants = [baseNorm, flipHCellsNorm(baseNorm)];
+  for (const v of variants) {
+    const k = key(v);
+    if (!seen.has(k)) {
+      seen.add(k);
+      out.push(v.map(x => ({ ...x })));
     }
-    const f = flipHCellsNorm(cur);
-    const k2 = key(f);
-    if (!seen.has(k2)) {
-      seen.add(k2);
-      out.push(f.map(x => ({ ...x })));
-    }
-    cur = rotateCellsNorm(cur);
   }
   return out;
 }
