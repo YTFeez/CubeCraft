@@ -80,6 +80,11 @@ export class Interaction {
     window.addEventListener('mouseup', e => this._onMouseUp(e));
     window.addEventListener('mouseleave', () => this._cancelMining());
     window.addEventListener('mousemove', e => this._onMouseMove(e));
+    window.addEventListener('contextmenu', (e) => {
+      // Prevent browser context menu while inventory is open so right-click
+      // split/place behaves exactly like in-game.
+      if (this.invOpen) e.preventDefault();
+    });
   }
 
   _buildInitialSlots(saved) {
@@ -515,6 +520,7 @@ export class Interaction {
 
   _onCraftSlotMouseDown(i, e) {
     if (!this.craftGrid) return;
+    this._moveInvCursor(e.clientX, e.clientY);
     const s = this.craftGrid[i];
     const carried = this.carried;
     const isLeft = e.button === 0;
@@ -729,12 +735,12 @@ export class Interaction {
 
   _onMouseMove(e) {
     if (!this.invOpen || !this._invCursorEl) return;
-    this._invCursorEl.style.left = e.clientX + 'px';
-    this._invCursorEl.style.top = e.clientY + 'px';
+    this._moveInvCursor(e.clientX, e.clientY);
   }
 
   // Click handling inside the inventory grid.
   _onInvSlotMouseDown(i, e) {
+    this._moveInvCursor(e.clientX, e.clientY);
     const s = this.slots[i];
     const carried = this.carried;
     const isLeft = e.button === 0;
@@ -1082,6 +1088,12 @@ export class Interaction {
       this._propagateFluids(nx, ny, nz);
       this.onChange?.();
     }
+  }
+
+  _moveInvCursor(x, y) {
+    if (!this._invCursorEl || !this.invOpen) return;
+    this._invCursorEl.style.left = `${x}px`;
+    this._invCursorEl.style.top = `${y}px`;
   }
 
   _propagateFluids(x, y, z) {
