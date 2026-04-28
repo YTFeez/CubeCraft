@@ -261,8 +261,6 @@ function blitPackOntoTile(ctx, col, row, img, rel = '') {
   // Ici, on applique une teinte locale pour retrouver un rendu cohérent.
   if (rel === 'block/grass_block_top.png') {
     tintTile(ctx, col, row, 0.72, 1.32, 0.72);
-  } else if (rel === 'block/grass_block_side.png') {
-    tintTile(ctx, col, row, 0.82, 1.22, 0.82);
   } else if (rel === 'block/oak_leaves.png') {
     tintTile(ctx, col, row, 0.72, 1.26, 0.72);
   } else if (rel === 'block/water_still.png') {
