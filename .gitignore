@@ -16,8 +16,10 @@ texture-pack/assets/minecraft/*
 texture-pack/assets/minecraft/textures/*
 !texture-pack/assets/minecraft/textures/block/
 !texture-pack/assets/minecraft/textures/item/
+!texture-pack/assets/minecraft/textures/gui/
 texture-pack/assets/minecraft/textures/block/*
 texture-pack/assets/minecraft/textures/item/*
+texture-pack/assets/minecraft/textures/gui/*
 !texture-pack/assets/minecraft/textures/block/grass_block_top.png
 !texture-pack/assets/minecraft/textures/block/grass_block_side.png
 !texture-pack/assets/minecraft/textures/block/dirt.png
@@ -50,4 +52,16 @@ texture-pack/assets/minecraft/textures/item/*
 !texture-pack/assets/minecraft/textures/item/stone_pickaxe.png
 !texture-pack/assets/minecraft/textures/item/iron_pickaxe.png
 !texture-pack/assets/minecraft/textures/item/diamond_pickaxe.png
+!texture-pack/assets/minecraft/textures/gui/menu_background.png
+!texture-pack/assets/minecraft/textures/gui/menu_list_background.png
+!texture-pack/assets/minecraft/textures/gui/inworld_menu_list_background.png
+!texture-pack/assets/minecraft/textures/gui/container/
+!texture-pack/assets/minecraft/textures/gui/container/inventory.png
+!texture-pack/assets/minecraft/textures/gui/sprites/
+!texture-pack/assets/minecraft/textures/gui/sprites/widget/
+!texture-pack/assets/minecraft/textures/gui/sprites/widget/button.png
+!texture-pack/assets/minecraft/textures/gui/sprites/widget/button_highlighted.png
+!texture-pack/assets/minecraft/textures/gui/sprites/hud/
+!texture-pack/assets/minecraft/textures/gui/sprites/hud/hotbar.png
+!texture-pack/assets/minecraft/textures/gui/sprites/hud/hotbar_selection.png
 
