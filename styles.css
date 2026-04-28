@@ -788,6 +788,11 @@ textarea {
   line-height: 1.35;
 }
 
+/* Force la police Minecraft sur toute l'UI texte */
+body * {
+  font-family: var(--mc-font) !important;
+}
+
 .overlay {
   background: linear-gradient(180deg, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0.72));
   backdrop-filter: none;
