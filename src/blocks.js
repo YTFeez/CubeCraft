@@ -259,7 +259,13 @@ function blitPackOntoTile(ctx, col, row, img, rel = '') {
   // Beaucoup de packs modernes stockent l'eau/lave en textures quasi
   // grayscale (la vraie coloration est faite par le moteur Minecraft via tint).
   // Ici, on applique une teinte locale pour retrouver un rendu cohérent.
-  if (rel === 'block/water_still.png') {
+  if (rel === 'block/grass_block_top.png') {
+    tintTile(ctx, col, row, 0.72, 1.32, 0.72);
+  } else if (rel === 'block/grass_block_side.png') {
+    tintTile(ctx, col, row, 0.82, 1.22, 0.82);
+  } else if (rel === 'block/oak_leaves.png') {
+    tintTile(ctx, col, row, 0.72, 1.26, 0.72);
+  } else if (rel === 'block/water_still.png') {
     tintTile(ctx, col, row, 0.48, 0.82, 1.55);
   } else if (rel === 'block/lava_still.png') {
     tintTile(ctx, col, row, 1.45, 0.9, 0.42);
