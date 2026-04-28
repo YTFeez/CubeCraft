@@ -362,11 +362,41 @@ pauseDeleteAccountBtn?.addEventListener('click', async () => { await doDeleteAcc
 /** Atlas blocs (async : charge le resource pack `/texture-pack/` par-dessus le procédural). */
 let atlasCanvas = null;
 let atlasTex = null;
+
+function buildEmergencyAtlas() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = '#777';
+    ctx.fillRect(0, 0, 64, 64);
+    ctx.fillStyle = '#999';
+    ctx.fillRect(0, 0, 32, 32);
+    ctx.fillRect(32, 32, 32, 32);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.magFilter = THREE.NearestFilter;
+  texture.minFilter = THREE.NearestFilter;
+  texture.wrapS = THREE.ClampToEdgeWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+  return { canvas, texture };
+}
+
 async function ensureAtlas() {
   if (atlasCanvas && atlasTex) return;
-  const built = await buildAtlas();
-  atlasCanvas = built.canvas;
-  atlasTex = built.texture;
+  try {
+    const built = await buildAtlas();
+    atlasCanvas = built.canvas;
+    atlasTex = built.texture;
+  } catch (err) {
+    console.error('Atlas load failed, using emergency fallback atlas:', err);
+    const fb = buildEmergencyAtlas();
+    atlasCanvas = fb.canvas;
+    atlasTex = fb.texture;
+  }
 }
 
 window.addEventListener('resize', () => {
