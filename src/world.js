@@ -70,6 +70,7 @@ export class World {
     this.biomeNoiseB = createNoise2D(rand);
     this.rand = rand;
     this.dirty = new Set();
+    this.fluidLevels = new Map(); // key "x,y,z" -> flow level
   }
 
   getChunkEdits(cx, cz, create = false) {
@@ -102,6 +103,17 @@ export class World {
     return [Math.floor(x / CHUNK_SIZE), Math.floor(z / CHUNK_SIZE)];
   }
 
+  fluidKey(x, y, z) { return `${x},${y},${z}`; }
+  setFluidLevel(x, y, z, level) { this.fluidLevels.set(this.fluidKey(x, y, z), level | 0); }
+  clearFluidLevel(x, y, z) { this.fluidLevels.delete(this.fluidKey(x, y, z)); }
+  getFluidLevel(x, y, z) { return this.fluidLevels.get(this.fluidKey(x, y, z)); }
+  getFluidSurfaceHeight(x, y, z, id) {
+    if (id === BLOCK.WATER || id === BLOCK.LAVA) return 1.0;
+    const lvl = this.getFluidLevel(x, y, z);
+    const clamped = lvl == null ? 5 : Math.max(0, Math.min(7, lvl | 0));
+    return Math.max(0.32, 0.96 - clamped * 0.12);
+  }
+
   getBlock(x, y, z) {
     if (y < 0 || y >= WORLD_HEIGHT) return BLOCK.AIR;
     const [cx, cz] = this.worldToChunk(x, z);
@@ -119,6 +131,7 @@ export class World {
     const lx = x - cx * CHUNK_SIZE;
     const lz = z - cz * CHUNK_SIZE;
     if (ch.get(lx, y, lz) === id) return;
+    if (!isFluid(id)) this.clearFluidLevel(x, y, z);
     ch.set(lx, y, lz, id);
     if (save) {
       const em = this.getChunkEdits(cx, cz, true);
@@ -264,6 +277,7 @@ export class World {
         for (let x = minX; x <= maxX; x++) {
           const id = this.getBlock(x, y, z);
           if (id === BLOCK.WATER_FLOW || id === BLOCK.LAVA_FLOW) {
+            this.clearFluidLevel(x, y, z);
             this.setBlock(x, y, z, BLOCK.AIR);
           }
         }
@@ -294,8 +308,10 @@ export class World {
             if (BLOCK_INFO[n]?.fluid) { sealed = false; break; }
           }
           if (sealed) {
+            this.clearFluidLevel(x, y, z);
             this.setBlock(x, y, z, BLOCK.AIR);
           } else {
+            this.setFluidLevel(x, y, z, 0);
             sources.push({ x, y, z, group: fluidGroup(id) });
           }
         }
@@ -333,6 +349,7 @@ export class World {
         if (id !== BLOCK.AIR) continue;
         const flowId = c.group === 'water' ? BLOCK.WATER_FLOW : BLOCK.LAVA_FLOW;
         this.setBlock(nx, ny, nz, flowId);
+        this.setFluidLevel(nx, ny, nz, nlevel);
         visited.set(k, nlevel);
         queue.push({ x: nx, y: ny, z: nz, level: nlevel, group: c.group });
       }
@@ -355,6 +372,10 @@ export class World {
     em.set(`${lx},${ly},${lz}`, blockId | 0);
     const ch = this.getChunk(cx, cz);
     if (ch) {
+      const wx = cx * CHUNK_SIZE + lx;
+      const wz = cz * CHUNK_SIZE + lz;
+      if (!isFluid(blockId)) this.clearFluidLevel(wx, ly, wz);
+      else if (blockId === BLOCK.WATER || blockId === BLOCK.LAVA) this.setFluidLevel(wx, ly, wz, 0);
       ch.set(lx, ly, lz, blockId | 0);
       this.dirty.add(ch);
       if (lx === 0) this.markDirty(cx - 1, cz);
@@ -762,6 +783,28 @@ export class Chunk {
     return 3 - (side1 + side2 + cornr);
   }
 
+  _fluidCornerHeight(wx, wy, wz, group, corner) {
+    // If there is fluid above this block, top remains flat/full.
+    if (fluidGroup(this.world.getBlock(wx, wy + 1, wz)) === group) return 1.0;
+    const xSide = corner[0] === 1 ? 1 : -1;
+    const zSide = corner[2] === 1 ? 1 : -1;
+    const samples = [
+      [wx, wy, wz],
+      [wx + xSide, wy, wz],
+      [wx, wy, wz + zSide],
+      [wx + xSide, wy, wz + zSide],
+    ];
+    let sum = 0;
+    let n = 0;
+    for (const [sx, sy, sz] of samples) {
+      const id = this.world.getBlock(sx, sy, sz);
+      if (fluidGroup(id) !== group) continue;
+      sum += this.world.getFluidSurfaceHeight(sx, sy, sz, id);
+      n++;
+    }
+    return n > 0 ? (sum / n) : 1.0;
+  }
+
   // Resolve water + lava contact: any lava cell (source or flowing) touching
   // water (source or flowing) on any of its 6 sides — possibly across chunk
   // borders — is converted to obsidian. Idempotent: safe to re-run on every
@@ -839,11 +882,16 @@ export class Chunk {
 
             const baseIndex = bucket.positions.length / 3;
             const uvCorners = [ [u0, v0], [u1, v0], [u0, v1], [u1, v1] ];
+            const fluidG = info.fluid ? fluidGroup(id) : null;
             for (let i = 0; i < 4; i++) {
               const c = face.corners[i];
+              let yOff = c[1];
+              if (fluidG && face.normal[1] === 1) {
+                yOff = this._fluidCornerHeight(wx, wy, wz, fluidG, c);
+              }
               bucket.positions.push(
                 origin[0] + x + c[0],
-                origin[1] + y + c[1],
+                origin[1] + y + yOff,
                 origin[2] + z + c[2]
               );
               bucket.normals.push(face.normal[0], face.normal[1], face.normal[2]);
