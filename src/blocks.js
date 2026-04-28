@@ -273,7 +273,14 @@ function blitPackOntoTile(ctx, col, row, img, rel = '') {
 function tintTile(ctx, col, row, mr, mg, mb) {
   const tx = col * TILE;
   const ty = row * TILE;
-  const img = ctx.getImageData(tx, ty, TILE, TILE);
+  let img;
+  try {
+    img = ctx.getImageData(tx, ty, TILE, TILE);
+  } catch {
+    // Some browsers can mark the canvas as non-readable depending on how an
+    // image was served; in that case we keep the untinted texture.
+    return;
+  }
   for (let i = 0; i < img.data.length; i += 4) {
     const a = img.data[i + 3];
     if (a === 0) continue;
@@ -321,8 +328,12 @@ const RESOURCE_PACK_SLOTS = [
 async function applyResourcePackTiles(ctx) {
   await Promise.all(
     RESOURCE_PACK_SLOTS.map(async ({ col, row, rel }) => {
-      const img = await loadPackImage(RESOURCE_PACK_TEXTURES + rel);
-      if (img) blitPackOntoTile(ctx, col, row, img, rel);
+      try {
+        const img = await loadPackImage(RESOURCE_PACK_TEXTURES + rel);
+        if (img) blitPackOntoTile(ctx, col, row, img, rel);
+      } catch {
+        // Never fail atlas generation because one pack tile is problematic.
+      }
     }),
   );
 }
