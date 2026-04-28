@@ -1069,24 +1069,31 @@ select,
     top center / 512px auto no-repeat;
 }
 
-/* --- Inventaire style Minecraft (slots sur l'UI) --- */
-#inventory .inv-panel {
-  position: relative;
-  width: 620px;
-  height: 586px;
-  padding: 0;
-  border: 0;
-  box-shadow: none;
-  background:
-    url("/texture-pack/assets/minecraft/textures/gui/container/inventory.png")
-    center center / 100% 100% no-repeat;
-}
-
+/* --- Inventaire ultra personnalise (grand + responsive) --- */
 #inventory {
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: 2vh 2vw;
   box-sizing: border-box;
+}
+
+#inventory .inv-panel {
+  --slot: clamp(46px, 4.8vw, 68px);
+  --gap: clamp(5px, 0.55vw, 9px);
+  position: relative;
+  width: min(96vw, 980px);
+  aspect-ratio: 1.52 / 1;
+  padding: 0;
+  border: 2px solid #121212;
+  border-radius: 14px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55), inset 0 0 0 2px rgba(255, 255, 255, 0.18);
+  background:
+    linear-gradient(180deg, rgba(16, 19, 28, 0.82), rgba(11, 12, 17, 0.9)),
+    url("/texture-pack/assets/minecraft/textures/gui/container/inventory.png");
+  background-size: auto, 100% 100%;
+  background-position: center, center;
+  background-repeat: no-repeat, no-repeat;
+  overflow: hidden;
 }
 
 #inventory .inv-panel h2,
@@ -1094,32 +1101,32 @@ select,
   display: none;
 }
 
-#inventory .inv-grid,
-#inventory .inv-hotbar {
-  position: absolute;
-  display: grid;
-  grid-template-columns: repeat(9, 48px);
-  gap: 6px;
-}
-
-#inventory #inv-main {
-  left: 24px;
-  top: 252px;
-}
-
-#inventory #inv-hotbar {
-  left: 24px;
-  top: 426px;
-}
-
 #inventory .inv-sep {
   display: none;
 }
 
+#inventory .inv-grid,
+#inventory .inv-hotbar {
+  position: absolute;
+  display: grid;
+  grid-template-columns: repeat(9, var(--slot));
+  gap: var(--gap);
+}
+
+#inventory #inv-main {
+  left: 5.8%;
+  top: 48.5%;
+}
+
+#inventory #inv-hotbar {
+  left: 5.8%;
+  top: 82.8%;
+}
+
 #inventory #inv-craft.inv-craft-mc {
   position: absolute;
-  left: 294px;
-  top: 51px;
+  left: 61.5%;
+  top: 14%;
   margin: 0;
   display: block;
 }
@@ -1131,47 +1138,47 @@ select,
 
 #inventory #inv-craft .craft-table-row {
   display: grid;
-  grid-template-columns: auto 48px;
-  column-gap: 36px;
+  grid-template-columns: auto var(--slot);
+  column-gap: clamp(20px, 2.2vw, 34px);
   align-items: center;
 }
 
 #inventory #inv-craft .craft-grid-2x2 {
-  gap: 6px;
+  gap: var(--gap);
 }
 
 #inventory #inv-craft .craft-result-slot {
-  width: 48px;
-  height: 48px;
+  width: var(--slot);
+  height: var(--slot);
 }
 
 #inventory .inv-slot {
-  width: 48px;
-  height: 48px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
+  width: var(--slot);
+  height: var(--slot);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  background: rgba(155, 155, 155, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.42);
 }
 
 #inventory .inv-slot:hover {
-  background: rgba(255, 255, 255, 0.12);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75);
+  background: rgba(180, 220, 255, 0.24);
+  box-shadow: inset 0 0 0 1px rgba(165, 228, 255, 0.9);
 }
 
 #inventory .inv-icon {
-  width: 44px;
-  height: 44px;
-  margin: 2px;
+  width: calc(var(--slot) - 6px);
+  height: calc(var(--slot) - 6px);
+  margin: 3px;
   image-rendering: pixelated;
   filter: none;
   box-shadow: none;
 }
 
 #inventory .inv-count {
-  right: 3px;
-  bottom: 0;
-  font-size: 18px;
+  right: 4px;
+  bottom: 1px;
+  font-size: clamp(15px, 1.35vw, 22px);
   color: #fff;
   text-shadow: 1px 1px 0 #000;
 }
@@ -1180,7 +1187,7 @@ select,
   position: absolute;
   left: calc(100% + 14px);
   top: 0;
-  width: 220px;
-  max-height: 498px;
+  width: min(280px, 24vw);
+  max-height: 100%;
   overflow: auto;
 }
