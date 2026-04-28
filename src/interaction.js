@@ -293,52 +293,11 @@ export class Interaction {
     wrap.classList.remove('hidden');
     wrap.classList.add('inv-craft-mc');
 
-    const bookCol = document.createElement('div');
-    bookCol.className = 'recipe-book-col';
-    const bookTitle = document.createElement('div');
-    bookTitle.className = 'inv-palette-title';
-    bookTitle.textContent = 'Livre de recettes';
-    bookCol.appendChild(bookTitle);
-    const bookList = document.createElement('div');
-    bookList.className = 'recipe-book-list';
-    bookCol.appendChild(bookList);
-
-    for (const recipe of RECIPES) {
-      const row = document.createElement('div');
-      row.className = 'recipe-book-row';
-      row.dataset.recipeId = recipe.id;
-      const icon = document.createElement('div');
-      icon.className = 'inv-icon recipe-book-icon';
-      icon.style.backgroundImage = `url(${blockIconDataURL(recipe.result.id, this.atlasCanvas)})`;
-      icon.style.backgroundSize = 'cover';
-      const label = document.createElement('span');
-      label.className = 'recipe-book-label';
-      const nm = BLOCK_INFO[recipe.result.id]?.name || recipe.id;
-      label.textContent = `${nm} ×${recipe.result.count}`;
-      row.appendChild(icon);
-      row.appendChild(label);
-      const can = this._recipeCanFill(recipe);
-      row.classList.toggle('recipe-book-row-disabled', !can);
-      row.title = can ? 'Clic : placer les ingrédients dans la grille' : 'Objets insuffisants';
-      row.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        if (e.button !== 0 || !this.craftGrid) return;
-        if (!this._recipeCanFill(recipe)) return;
-        if (!fillRecipeFromInventory(this.slots, this.craftGrid, recipe)) return;
-        this._refreshHotbarDOM();
-        this._refreshInventoryDOM();
-        this._refreshCraftingDOM();
-        this._refreshRecipeBookRows();
-        if (this.onInventoryChange) this.onInventoryChange();
-      });
-      bookList.appendChild(row);
-    }
-
     const tableCol = document.createElement('div');
     tableCol.className = 'craft-table-col';
     const craftTitle = document.createElement('div');
     craftTitle.className = 'inv-palette-title';
-    craftTitle.textContent = 'Table de craft';
+    craftTitle.textContent = 'Craft (cases)';
     tableCol.appendChild(craftTitle);
 
     const tableRow = document.createElement('div');
@@ -371,7 +330,6 @@ export class Interaction {
     tableRow.appendChild(resultEl);
     tableCol.appendChild(tableRow);
 
-    wrap.appendChild(bookCol);
     wrap.appendChild(tableCol);
     this._craftResultEl = resultEl;
     this._refreshCraftingDOM();
