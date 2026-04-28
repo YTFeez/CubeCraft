@@ -13,6 +13,9 @@ texture-pack/assets/*
 !texture-pack/assets/minecraft/
 texture-pack/assets/minecraft/*
 !texture-pack/assets/minecraft/textures/
+!texture-pack/assets/minecraft/font/
+texture-pack/assets/minecraft/font/*
+!texture-pack/assets/minecraft/font/minecraft_font.ttf
 texture-pack/assets/minecraft/textures/*
 !texture-pack/assets/minecraft/textures/block/
 !texture-pack/assets/minecraft/textures/item/
