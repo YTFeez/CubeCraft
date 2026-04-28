@@ -1049,7 +1049,7 @@ export class Interaction {
 
   _onMouseDown(e) {
     if (this.invOpen) return; // click handling is per-slot inside the overlay
-    if (!this.player.locked) return;
+    if (!this.player.locked && !this.player.mobileMode) return;
     if (this.player.dead) return;
     const hit = this._raycast();
     if (!hit) return;

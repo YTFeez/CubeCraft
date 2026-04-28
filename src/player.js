@@ -12,6 +12,8 @@ const JUMP_SPEED = 9.2;
 const WALK_SPEED = 4.6;
 const RUN_SPEED = 7.4;
 const AIR_CONTROL = 0.35;
+const THIRD_PERSON_DIST = 3.2;
+const FRONT_PERSON_DIST = 2.2;
 
 export class Player {
   constructor(camera, world, domElement) {
@@ -30,10 +32,15 @@ export class Player {
     this.keys = new Set();
     this.running = false;
     this.crouching = false;
+    this.viewMode = 0; // 0: first, 1: third back, 2: third front
+    this.mobileMode = false;
     this.locked = false;
     this.eyeHeight = EYE;
     this.autoJump = false;
     this.sprintLock = false;
+    this.virtualX = 0;
+    this.virtualZ = 0;
+    this.virtualJump = false;
 
     // --- Survival state ---
     this.surviveMode = false;
@@ -69,14 +76,18 @@ export class Player {
   unlock() { if (document.pointerLockElement) document.exitPointerLock(); }
 
   _onPointerLockChange() {
-    this.locked = document.pointerLockElement === this.dom;
+    this.locked = this.mobileMode ? true : (document.pointerLockElement === this.dom);
   }
 
   _onMouseMove(e) {
     if (!this.locked) return;
+    this.lookBy(e.movementX, e.movementY);
+  }
+
+  lookBy(dx, dy) {
     const sensitivity = 0.0025;
-    this.yaw   -= e.movementX * sensitivity;
-    this.pitch -= e.movementY * sensitivity;
+    this.yaw   -= dx * sensitivity;
+    this.pitch -= dy * sensitivity;
     const lim = Math.PI / 2 - 0.01;
     if (this.pitch > lim) this.pitch = lim;
     if (this.pitch < -lim) this.pitch = -lim;
@@ -87,6 +98,7 @@ export class Player {
     this.keys.add(e.code);
     if (e.code === 'ControlLeft' || e.code === 'ControlRight') this.running = true;
     if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.crouching = true;
+    if (e.code === 'KeyV' || e.code === 'F5') this.viewMode = (this.viewMode + 1) % 3;
   }
   _onKeyUp(e) {
     this.keys.delete(e.code);
@@ -186,6 +198,8 @@ export class Player {
     if (this.keys.has('KeyS') || this.keys.has('ArrowDown'))                         inputZ += 1;
     if (this.keys.has('KeyQ') || this.keys.has('KeyA') || this.keys.has('ArrowLeft'))inputX -= 1;
     if (this.keys.has('KeyD') || this.keys.has('ArrowRight'))                        inputX += 1;
+    inputX += this.virtualX;
+    inputZ += this.virtualZ;
 
     const len = Math.hypot(inputX, inputZ);
     if (len > 0) { inputX /= len; inputZ /= len; }
@@ -231,7 +245,8 @@ export class Player {
       // Buoyancy: dampened gravity, hold space to swim up.
       const grav = GRAVITY * 0.18;
       this.velocity.y -= grav * dt;
-      if (this.keys.has('Space')) {
+      const jumpHeld = this.keys.has('Space') || this.virtualJump;
+      if (jumpHeld) {
         // Continuous swim-up acceleration while space is held.
         this.velocity.y += GRAVITY * 0.75 * dt;
         // Near the surface, give an extra pop so holding space exits water.
@@ -244,7 +259,8 @@ export class Player {
       this.velocity.y *= Math.pow(yDrag, dt);
       if (this.velocity.y < -3.5) this.velocity.y = -3.5;
     } else {
-      if (this.keys.has('Space') && this.onGround) {
+      const jumpHeld = this.keys.has('Space') || this.virtualJump;
+      if (jumpHeld && this.onGround) {
         this.velocity.y = JUMP_SPEED;
         this.onGround = false;
       }
@@ -293,10 +309,35 @@ export class Player {
     const headY = this.position.y + this.eyeHeight - HEIGHT / 2;
     const headZ = this.position.z;
 
-    this.camera.position.set(headX, headY, headZ);
+    const sinY = Math.sin(this.yaw);
+    const cosY = Math.cos(this.yaw);
+    const forwardX = -sinY;
+    const forwardZ = -cosY;
+
     this.camera.rotation.set(0, 0, 0);
-    this.camera.rotateY(this.yaw);
-    this.camera.rotateX(this.pitch);
+    if (this.viewMode === 2) {
+      this.camera.rotateY(this.yaw + Math.PI);
+      this.camera.rotateX(-this.pitch * 0.45);
+    } else {
+      this.camera.rotateY(this.yaw);
+      this.camera.rotateX(this.pitch);
+    }
+
+    if (this.viewMode === 0) {
+      this.camera.position.set(headX, headY, headZ);
+    } else if (this.viewMode === 1) {
+      this.camera.position.set(
+        headX - forwardX * THIRD_PERSON_DIST,
+        headY + 0.1,
+        headZ - forwardZ * THIRD_PERSON_DIST
+      );
+    } else {
+      this.camera.position.set(
+        headX + forwardX * FRONT_PERSON_DIST,
+        headY + 0.08,
+        headZ + forwardZ * FRONT_PERSON_DIST
+      );
+    }
   }
 
   _moveAxis(dx, dy, dz) {
@@ -446,5 +487,19 @@ export class Player {
   setPreferences({ autoJump = this.autoJump, sprintLock = this.sprintLock } = {}) {
     this.autoJump = !!autoJump;
     this.sprintLock = !!sprintLock;
+  }
+
+  setMobileMode(on) {
+    this.mobileMode = !!on;
+    if (this.mobileMode) this.locked = true;
+  }
+
+  setVirtualMove(x, z) {
+    this.virtualX = Math.max(-1, Math.min(1, x || 0));
+    this.virtualZ = Math.max(-1, Math.min(1, z || 0));
+  }
+
+  setVirtualJump(on) {
+    this.virtualJump = !!on;
   }
 }

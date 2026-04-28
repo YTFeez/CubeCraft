@@ -47,6 +47,14 @@ const settingAutoJump = document.getElementById('setting-autojump');
 const settingSprintLock = document.getElementById('setting-sprintlock');
 const pauseLogoutBtn = document.getElementById('pause-logout-btn');
 const pauseDeleteAccountBtn = document.getElementById('pause-delete-account-btn');
+const mobileControls = document.getElementById('mobile-controls');
+const mobileJoystick = document.getElementById('mobile-joystick');
+const mobileStick = document.getElementById('mobile-stick');
+const mobileJumpBtn = document.getElementById('mobile-jump');
+const mobileBreakBtn = document.getElementById('mobile-break');
+const mobilePlaceBtn = document.getElementById('mobile-place');
+const mobileInvBtn = document.getElementById('mobile-inv');
+const mobileViewBtn = document.getElementById('mobile-view');
 const clockEl      = document.getElementById('clock');
 const coordsEl     = document.getElementById('coords');
 const fpsEl        = document.getElementById('fps');
@@ -372,6 +380,7 @@ window.addEventListener('resize', () => {
 // =========================================================================
 let session = null; // { theme, world, player, interaction, audio, particles, network, remotePlayers, knownPlayers, sky, skyU, sun, hemi, ambient, stars, clouds, opaqueMat, transparentMat, waterMat, waterTime, timeOfDay, scene, leader, ... }
 let pendingChunkPos = null;
+const isMobileDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 
 async function joinWorld(themeId) {
   if (!auth?.token) { showAuthScreen(); return; }
@@ -408,6 +417,7 @@ async function joinWorld(themeId) {
     return null;
   });
   if (!session) return;
+  setupMobileControls(session);
 
   // Initial chunk generation around spawn.
   await initialGenerate(session);
@@ -644,6 +654,7 @@ async function createSession(theme, name) {
     spawn: welcome.spawn || null,
     refreshPlayersList,
     bobPhase: 0, currentFov: baseFov,
+    mobileActive: false,
     isSurvival,
     get invDirty() { return invDirty; },
     set invDirty(v) { invDirty = v; },
@@ -809,6 +820,7 @@ async function initialGenerate(s) {
 
 function leaveSession() {
   if (!session) return;
+  teardownMobileControls();
   // Always flush inventory before disconnecting so creative hotbar arrangement
   // is persisted too, not only survival inventories.
   try { session.network.sendInventory(session.interaction.exportInventory()); } catch {}
@@ -1032,10 +1044,110 @@ chatInput.addEventListener('keydown', (e) => {
 // =========================================================================
 // GLOBAL UI WIRING
 // =========================================================================
+function setupMobileControls(s) {
+  if (!isMobileDevice || !mobileControls) return;
+  mobileControls.classList.remove('hidden');
+  s.mobileActive = true;
+  s.player.setMobileMode(true);
+
+  const resetStick = () => {
+    s.player.setVirtualMove(0, 0);
+    if (mobileStick) {
+      mobileStick.style.left = '40px';
+      mobileStick.style.top = '40px';
+    }
+  };
+
+  const moveFromTouch = (clientX, clientY) => {
+    const rect = mobileJoystick.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    let dx = clientX - cx;
+    let dy = clientY - cy;
+    const maxR = rect.width * 0.35;
+    const d = Math.hypot(dx, dy);
+    if (d > maxR && d > 0) {
+      dx = (dx / d) * maxR;
+      dy = (dy / d) * maxR;
+    }
+    if (mobileStick) {
+      mobileStick.style.left = `${rect.width / 2 + dx - 20}px`;
+      mobileStick.style.top = `${rect.height / 2 + dy - 20}px`;
+    }
+    s.player.setVirtualMove(dx / maxR, dy / maxR);
+  };
+
+  mobileJoystick.ontouchstart = (e) => {
+    const t = e.touches[0];
+    if (!t) return;
+    moveFromTouch(t.clientX, t.clientY);
+    e.preventDefault();
+  };
+  mobileJoystick.ontouchmove = (e) => {
+    const t = e.touches[0];
+    if (!t) return;
+    moveFromTouch(t.clientX, t.clientY);
+    e.preventDefault();
+  };
+  mobileJoystick.ontouchend = () => resetStick();
+  mobileJoystick.ontouchcancel = () => resetStick();
+
+  let lastLook = null;
+  canvas.ontouchstart = (e) => {
+    const t = e.touches[0];
+    if (!t) return;
+    lastLook = { x: t.clientX, y: t.clientY };
+  };
+  canvas.ontouchmove = (e) => {
+    const t = e.touches[0];
+    if (!t || !lastLook) return;
+    const dx = t.clientX - lastLook.x;
+    const dy = t.clientY - lastLook.y;
+    s.player.lookBy(dx, dy);
+    lastLook = { x: t.clientX, y: t.clientY };
+    e.preventDefault();
+  };
+  canvas.ontouchend = () => { lastLook = null; };
+
+  mobileJumpBtn.ontouchstart = (e) => { s.player.setVirtualJump(true); e.preventDefault(); };
+  mobileJumpBtn.ontouchend = () => s.player.setVirtualJump(false);
+  mobileJumpBtn.ontouchcancel = () => s.player.setVirtualJump(false);
+
+  mobileBreakBtn.ontouchstart = (e) => { s.interaction._onMouseDown({ button: 0 }); e.preventDefault(); };
+  mobileBreakBtn.ontouchend = () => s.interaction._onMouseUp();
+  mobileBreakBtn.ontouchcancel = () => s.interaction._onMouseUp();
+
+  mobilePlaceBtn.ontouchstart = (e) => { s.interaction._onMouseDown({ button: 2 }); e.preventDefault(); };
+  mobileInvBtn.ontouchstart = (e) => {
+    if (s.interaction.invOpen) s.interaction.closeInventory();
+    else s.interaction.openInventory();
+    e.preventDefault();
+  };
+  mobileViewBtn.ontouchstart = (e) => {
+    s.player.viewMode = (s.player.viewMode + 1) % 3;
+    e.preventDefault();
+  };
+}
+
+function teardownMobileControls() {
+  if (!mobileControls) return;
+  mobileControls.classList.add('hidden');
+  canvas.ontouchstart = null;
+  canvas.ontouchmove = null;
+  canvas.ontouchend = null;
+  if (mobileJoystick) {
+    mobileJoystick.ontouchstart = null;
+    mobileJoystick.ontouchmove = null;
+    mobileJoystick.ontouchend = null;
+    mobileJoystick.ontouchcancel = null;
+  }
+}
+
 canvas.addEventListener('click', () => {
   if (!session) return;
   if (!menu.classList.contains('hidden')) return;
   if (chatInput.classList.contains('visible')) return;
+  if (isMobileDevice) return;
   session.player.lock();
 });
 canvas.addEventListener('contextmenu', e => e.preventDefault());
@@ -1056,6 +1168,7 @@ menu.addEventListener('contextmenu', (e) => e.preventDefault());
 
 document.addEventListener('pointerlockchange', () => {
   if (!session) return;
+  if (session.mobileActive) return;
   const inventoryEl = document.getElementById('inventory');
   const inventoryOpen = inventoryEl && !inventoryEl.classList.contains('hidden');
   if (!document.pointerLockElement
@@ -1097,7 +1210,7 @@ function animate() {
   s.waterTime += dt;
   if (s.waterMat.userData.shader) s.waterMat.userData.shader.uniforms.uTime.value = s.waterTime;
 
-  if (s.player.locked) {
+  if (s.player.locked || s.mobileActive) {
     s.player.update(dt);
     const hSpeed = Math.hypot(s.player.velocity.x, s.player.velocity.z);
     if (s.player.onGround && hSpeed > 1) s.audio.playStep();
@@ -1116,7 +1229,7 @@ function animate() {
   s.interaction.updateMining(dt);
   s.particles.update(dt);
   s.remotePlayers.update(dt);
-  if (s.player.locked && !s.player.dead) {
+  if ((s.player.locked || s.mobileActive) && !s.player.dead) {
     s.itemDrops.update(dt, s.world, s.player, s.network.you?.id, (dropId) => s.network.sendPickup(dropId));
   } else {
     s.itemDrops.update(dt, s.world, s.player, -1, null);

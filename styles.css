@@ -361,6 +361,57 @@ body.left-hand #hotbar {
   right: auto;
 }
 
+#game {
+  touch-action: none;
+}
+
+#mobile-controls {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+
+#mobile-controls.hidden { display: none; }
+
+.mobile-joystick {
+  position: absolute;
+  left: 16px;
+  bottom: 24px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  pointer-events: auto;
+}
+
+#mobile-stick {
+  position: absolute;
+  left: 40px;
+  top: 40px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(180, 220, 255, 0.85);
+}
+
+.mobile-buttons {
+  position: absolute;
+  right: 12px;
+  bottom: 20px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(86px, 1fr));
+  gap: 8px;
+  width: 190px;
+  pointer-events: auto;
+}
+
+.mobile-buttons button {
+  min-height: 42px;
+  padding: 6px 8px;
+}
+
 button {
   background: linear-gradient(180deg, #4caf50, #388e3c);
   color: white;
