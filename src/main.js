@@ -488,7 +488,7 @@ async function createSession(theme, name) {
   const world = new World(theme, scene, opaqueMat, transparentMat, waterMat);
   const audio = new Audio();
   audio.setVolume((pauseSettings.volume | 0) / 100);
-  const player = new Player(camera, world, canvas, scene);
+  const player = new Player(camera, world, canvas);
   player.setPreferences({
     autoJump: !!pauseSettings.autoJump,
     sprintLock: !!pauseSettings.sprintLock,
