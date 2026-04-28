@@ -249,13 +249,35 @@ function loadPackImage(url) {
 }
 
 /** Première tranche 16×16 (eau / lave animées en bande verticale). */
-function blitPackOntoTile(ctx, col, row, img) {
+function blitPackOntoTile(ctx, col, row, img, rel = '') {
   if (!img || !img.naturalWidth) return;
   const dx = col * TILE;
   const dy = row * TILE;
   const sw = Math.min(TILE, img.naturalWidth);
   const sh = Math.min(TILE, img.naturalHeight);
   ctx.drawImage(img, 0, 0, sw, sh, dx, dy, TILE, TILE);
+  // Beaucoup de packs modernes stockent l'eau/lave en textures quasi
+  // grayscale (la vraie coloration est faite par le moteur Minecraft via tint).
+  // Ici, on applique une teinte locale pour retrouver un rendu cohérent.
+  if (rel === 'block/water_still.png') {
+    tintTile(ctx, col, row, 0.48, 0.82, 1.55);
+  } else if (rel === 'block/lava_still.png') {
+    tintTile(ctx, col, row, 1.45, 0.9, 0.42);
+  }
+}
+
+function tintTile(ctx, col, row, mr, mg, mb) {
+  const tx = col * TILE;
+  const ty = row * TILE;
+  const img = ctx.getImageData(tx, ty, TILE, TILE);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const a = img.data[i + 3];
+    if (a === 0) continue;
+    img.data[i + 0] = clamp(img.data[i + 0] * mr);
+    img.data[i + 1] = clamp(img.data[i + 1] * mg);
+    img.data[i + 2] = clamp(img.data[i + 2] * mb);
+  }
+  ctx.putImageData(img, tx, ty);
 }
 
 /** Cases atlas (col,row) alignées sur `FACE_TILES` / tiles procéduraux. */
@@ -296,7 +318,7 @@ async function applyResourcePackTiles(ctx) {
   await Promise.all(
     RESOURCE_PACK_SLOTS.map(async ({ col, row, rel }) => {
       const img = await loadPackImage(RESOURCE_PACK_TEXTURES + rel);
-      if (img) blitPackOntoTile(ctx, col, row, img);
+      if (img) blitPackOntoTile(ctx, col, row, img, rel);
     }),
   );
 }
