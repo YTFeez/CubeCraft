@@ -11,6 +11,11 @@ const STACK_MAX = 64;
 /** @typedef {{ id: number, count: number }} Stack */
 /** @typedef {{ type: 'shaped', id: string, pattern: string[], keys: Record<string, number>, result: Stack } | { type: 'shapeless', id: string, ingredients: { id: number, count: number }[], result: Stack }} Recipe */
 
+function gridSide(craftGrid) {
+  const n = Math.round(Math.sqrt(craftGrid.length || 0));
+  return (n > 0 && n * n === craftGrid.length) ? n : 3;
+}
+
 /** @type {Recipe[]} */
 export const RECIPES = [
   // Planches : 1 bûche -> 4 (sans forme, une case suffit dans la grille 3×3)
@@ -211,17 +216,18 @@ function cellPatternVariants(baseNorm) {
 /** @returns {{ dr: number, dc: number, cells: { r: number, c: number, id: number }[] } | null} */
 function tryPlacementDetails(craftGrid, cells) {
   if (!cells.length) return null;
+  const n = gridSide(craftGrid);
   const ph = Math.max(...cells.map(x => x.r)) + 1;
   const pw = Math.max(...cells.map(x => x.c)) + 1;
-  for (let dr = 0; dr + ph <= 3; dr++) {
-    for (let dc = 0; dc + pw <= 3; dc++) {
+  for (let dr = 0; dr + ph <= n; dr++) {
+    for (let dc = 0; dc + pw <= n; dc++) {
       let ok = true;
-      for (let r = 0; r < 3 && ok; r++) {
-        for (let c = 0; c < 3; c++) {
+      for (let r = 0; r < n && ok; r++) {
+        for (let c = 0; c < n; c++) {
           const pr = r - dr;
           const pc = c - dc;
           const need = cells.find(x => x.r === pr && x.c === pc);
-          const s = craftGrid[r * 3 + c];
+          const s = craftGrid[r * n + c];
           if (need) {
             if (!s || s.id !== need.id || s.count < 1) ok = false;
           } else if (s && s.count > 0) ok = false;
@@ -302,7 +308,7 @@ export function craftOnceFromGrid(craftGrid, slots, recipe) {
   if (recipe.type === 'shapeless') {
     for (const ing of recipe.ingredients) {
       let rem = ing.count;
-      for (let i = 0; i < 9 && rem > 0; i++) {
+      for (let i = 0; i < craftGrid.length && rem > 0; i++) {
         const s = craftGrid[i];
         if (!s || s.id !== ing.id) continue;
         const t = Math.min(s.count, rem);
@@ -315,13 +321,14 @@ export function craftOnceFromGrid(craftGrid, slots, recipe) {
   } else {
     const det = findShapedMatchDetails(craftGrid, recipe);
     if (!det) return false;
+    const n = gridSide(craftGrid);
     for (const cell of det.cells) {
-      const i = (det.dr + cell.r) * 3 + (det.dc + cell.c);
+      const i = (det.dr + cell.r) * n + (det.dc + cell.c);
       const s = craftGrid[i];
       if (!s || s.id !== cell.id || s.count < 1) return false;
     }
     for (const cell of det.cells) {
-      const i = (det.dr + cell.r) * 3 + (det.dc + cell.c);
+      const i = (det.dr + cell.r) * n + (det.dc + cell.c);
       const s = craftGrid[i];
       s.count -= 1;
       if (s.count <= 0) craftGrid[i] = null;
@@ -360,7 +367,7 @@ export function recipeIngredientMap(recipe) {
  */
 export function fillRecipeFromInventory(slots, craftGrid, recipe) {
   // renvoie tout de la grille vers l'inventaire
-  for (let i = 0; i < 9; i++) {
+  for (let i = 0; i < craftGrid.length; i++) {
     const s = craftGrid[i];
     if (!s) continue;
     mergeIntoSlots(slots, s);
@@ -370,11 +377,13 @@ export function fillRecipeFromInventory(slots, craftGrid, recipe) {
   if (!hasIngredients(slots, craftGrid, need)) return false;
 
   if (recipe.type === 'shaped') {
-    const expected = flatExpected(recipe);
-    for (let i = 0; i < 9; i++) {
-      const id = expected[i];
-      if (id == null) continue;
+    const det = findShapedMatchDetails(craftGrid, recipe);
+    if (!det) return false;
+    const n = gridSide(craftGrid);
+    for (const cell of det.cells) {
+      const id = cell.id;
       if (!takeFromSlots(slots, id, 1)) return false;
+      const i = (det.dr + cell.r) * n + (det.dc + cell.c);
       craftGrid[i] = { id, count: 1 };
     }
   } else {
@@ -383,7 +392,7 @@ export function fillRecipeFromInventory(slots, craftGrid, recipe) {
       while (rem > 0) {
         if (!takeFromSlots(slots, ing.id, 1)) return false;
         let placed = false;
-        for (let i = 0; i < 9 && !placed; i++) {
+        for (let i = 0; i < craftGrid.length && !placed; i++) {
           if (craftGrid[i]) continue;
           craftGrid[i] = { id: ing.id, count: 1 };
           placed = true;

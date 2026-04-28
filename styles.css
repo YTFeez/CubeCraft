@@ -755,6 +755,13 @@ button.small {
   gap: 3px;
 }
 
+.craft-grid-2x2 {
+  display: grid;
+  grid-template-columns: repeat(2, 48px);
+  grid-template-rows: repeat(2, 48px);
+  gap: 3px;
+}
+
 .craft-slot.inv-slot {
   width: 48px;
   height: 48px;

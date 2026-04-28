@@ -18,6 +18,8 @@ const HOTBAR_SIZE = 9;
 const MAIN_SIZE = 27;
 const INV_SIZE = HOTBAR_SIZE + MAIN_SIZE; // 36 slots: 0..8 hotbar, 9..35 main
 const STACK_MAX = 64;
+const CRAFT_GRID_SIZE = 2;
+const CRAFT_SLOT_COUNT = CRAFT_GRID_SIZE * CRAFT_GRID_SIZE;
 
 // Blocks the player cannot pick up when broken (fluids included so we never
 // stash a flowing-water block in the inventory).
@@ -59,7 +61,7 @@ export class Interaction {
     this.invOpen = false;
 
     /** @type {({ id: number, count: number } | null)[] | null} Grille 3×3 (survie uniquement). */
-    this.craftGrid = this.mode === 'survival' ? new Array(9).fill(null) : null;
+    this.craftGrid = this.mode === 'survival' ? new Array(CRAFT_SLOT_COUNT).fill(null) : null;
 
     /** @type {{ x:number,y:number,z:number,id:number,progress:number } | null} */
     this._mining = null;
@@ -269,7 +271,7 @@ export class Interaction {
 
   _stowCraftGrid() {
     if (!this.craftGrid) return;
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < this.craftGrid.length; i++) {
       const s = this.craftGrid[i];
       if (!s) continue;
       mergeIntoSlots(this.slots, s);
@@ -303,8 +305,8 @@ export class Interaction {
     const tableRow = document.createElement('div');
     tableRow.className = 'craft-table-row';
     const gridEl = document.createElement('div');
-    gridEl.className = 'craft-grid-3x3';
-    for (let i = 0; i < 9; i++) {
+    gridEl.className = `craft-grid-${CRAFT_GRID_SIZE}x${CRAFT_GRID_SIZE}`;
+    for (let i = 0; i < this.craftGrid.length; i++) {
       gridEl.appendChild(this._buildCraftSlotEl(i));
     }
     const arrow = document.createElement('div');
@@ -881,7 +883,7 @@ export class Interaction {
     if (this.mode === 'survival' && this.craftGrid) this._stowCraftGrid();
     this.mode = mode === 'survival' ? 'survival' : 'creative';
     this.slots = this._buildInitialSlots(inventory);
-    this.craftGrid = this.mode === 'survival' ? new Array(9).fill(null) : null;
+    this.craftGrid = this.mode === 'survival' ? new Array(CRAFT_SLOT_COUNT).fill(null) : null;
     this._refreshHotbarDOM();
     // Rebuild the inventory DOM in case the palette visibility changed.
     if (this._invOverlayEl) {
