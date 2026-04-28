@@ -1072,8 +1072,8 @@ select,
 /* --- Inventaire style Minecraft (slots sur l'UI) --- */
 #inventory .inv-panel {
   position: relative;
-  width: 352px;
-  height: 332px;
+  width: 528px;
+  height: 498px;
   padding: 0;
   border: 0;
   box-shadow: none;
@@ -1091,18 +1091,18 @@ select,
 #inventory .inv-hotbar {
   position: absolute;
   display: grid;
-  grid-template-columns: repeat(9, 32px);
-  gap: 4px;
+  grid-template-columns: repeat(9, 48px);
+  gap: 6px;
 }
 
 #inventory #inv-main {
-  left: 16px;
-  top: 168px;
+  left: 24px;
+  top: 252px;
 }
 
 #inventory #inv-hotbar {
-  left: 16px;
-  top: 284px;
+  left: 24px;
+  top: 426px;
 }
 
 #inventory .inv-sep {
@@ -1111,8 +1111,8 @@ select,
 
 #inventory #inv-craft.inv-craft-mc {
   position: absolute;
-  left: 196px;
-  top: 34px;
+  left: 294px;
+  top: 51px;
   margin: 0;
   display: block;
 }
@@ -1124,23 +1124,23 @@ select,
 
 #inventory #inv-craft .craft-table-row {
   display: grid;
-  grid-template-columns: auto 32px;
-  column-gap: 24px;
+  grid-template-columns: auto 48px;
+  column-gap: 36px;
   align-items: center;
 }
 
 #inventory #inv-craft .craft-grid-2x2 {
-  gap: 4px;
+  gap: 6px;
 }
 
 #inventory #inv-craft .craft-result-slot {
-  width: 32px;
-  height: 32px;
+  width: 48px;
+  height: 48px;
 }
 
 #inventory .inv-slot {
-  width: 32px;
-  height: 32px;
+  width: 48px;
+  height: 48px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -1153,18 +1153,27 @@ select,
 }
 
 #inventory .inv-icon {
-  width: 30px;
-  height: 30px;
-  margin: 1px;
+  width: 44px;
+  height: 44px;
+  margin: 2px;
   image-rendering: pixelated;
   filter: none;
   box-shadow: none;
 }
 
 #inventory .inv-count {
-  right: 2px;
+  right: 3px;
   bottom: 0;
-  font-size: 13px;
+  font-size: 18px;
   color: #fff;
   text-shadow: 1px 1px 0 #000;
+}
+
+#inventory .inv-palette-wrap {
+  position: absolute;
+  left: calc(100% + 14px);
+  top: 0;
+  width: 220px;
+  max-height: 498px;
+  overflow: auto;
 }
