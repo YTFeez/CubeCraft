@@ -432,25 +432,29 @@ async function joinWorld(themeId) {
   }
   progressBar.style.width = '10%';
 
-  session = await createSession(theme, name).catch(err => {
+  try {
+    session = await createSession(theme, name);
+    if (!session) throw new Error('SESSION_NULL');
+    setupMobileControls(session);
+    // Initial chunk generation around spawn.
+    await initialGenerate(session);
+  } catch (err) {
     console.error(err);
     if (err && err.message === 'AUTH') {
       clearAuth();
       auth = null;
       loading.classList.add('hidden');
       showAuthScreen();
-      return null;
+      return;
     }
-    alert('Connexion au serveur impossible. Le serveur Node tourne-t-il bien ?');
+    const msg = (err && err.message === 'TIMEOUT')
+      ? 'Connexion au serveur trop lente (timeout). Réessaie dans quelques secondes.'
+      : 'Connexion au serveur impossible. Le serveur Node tourne-t-il bien ?';
+    alert(msg);
     selectionEl.classList.remove('hidden');
     loading.classList.add('hidden');
-    return null;
-  });
-  if (!session) return;
-  setupMobileControls(session);
-
-  // Initial chunk generation around spawn.
-  await initialGenerate(session);
+    return;
+  }
 
   // Show in-game menu (paused) so user clicks "Jouer" once textures and chunks are ready.
   loading.classList.add('hidden');
