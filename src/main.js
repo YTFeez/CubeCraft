@@ -362,43 +362,9 @@ pauseDeleteAccountBtn?.addEventListener('click', async () => { await doDeleteAcc
 /** Atlas blocs (async : charge le resource pack `/texture-pack/` par-dessus le procédural). */
 let atlasCanvas = null;
 let atlasTex = null;
-function buildEmergencyAtlas() {
-  const tile = 16;
-  const cols = 4;
-  const rows = 9;
-  const canvas = document.createElement('canvas');
-  canvas.width = tile * cols;
-  canvas.height = tile * rows;
-  const ctx = canvas.getContext('2d');
-  ctx.imageSmoothingEnabled = false;
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const x = c * tile;
-      const y = r * tile;
-      ctx.fillStyle = (r + c) % 2 === 0 ? '#8c8c8c' : '#6f6f6f';
-      ctx.fillRect(x, y, tile, tile);
-      ctx.fillStyle = 'rgba(255,255,255,0.12)';
-      ctx.fillRect(x, y, tile, 3);
-    }
-  }
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.magFilter = THREE.NearestFilter;
-  texture.minFilter = THREE.NearestFilter;
-  texture.wrapS = THREE.ClampToEdgeWrapping;
-  texture.wrapT = THREE.ClampToEdgeWrapping;
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.needsUpdate = true;
-  return { canvas, texture };
-}
 async function ensureAtlas() {
   if (atlasCanvas && atlasTex) return;
-  let built;
-  try {
-    built = await buildAtlas();
-  } catch (err) {
-    console.warn('Atlas pack/procedural failed, fallback emergency atlas.', err);
-    built = buildEmergencyAtlas();
-  }
+  const built = await buildAtlas();
   atlasCanvas = built.canvas;
   atlasTex = built.texture;
 }
