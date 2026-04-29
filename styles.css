@@ -1332,26 +1332,6 @@ select,
   background: rgba(0, 0, 0, 0.22);
 }
 
-.faction-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.faction-row input {
-  flex: 1;
-}
-
-.faction-status {
-  margin: 8px 0 0;
-  white-space: pre-wrap;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  padding: 8px;
-  min-height: 94px;
-}
-
 #inventory .inv-palette-wrap {
   margin-top: 8px;
 }

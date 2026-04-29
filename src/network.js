@@ -21,13 +21,6 @@ export class Network {
       const ws = new WebSocket(this.url);
       this.ws = ws;
       let resolved = false;
-      const timeoutMs = 15000;
-      const timer = setTimeout(() => {
-        if (resolved) return;
-        resolved = true;
-        try { ws.close(); } catch {}
-        reject(new Error('TIMEOUT'));
-      }, timeoutMs);
 
       ws.addEventListener('open', () => {
         ws.send(JSON.stringify({
@@ -41,17 +34,10 @@ export class Network {
       ws.addEventListener('message', (ev) => {
         let msg;
         try { msg = JSON.parse(ev.data); } catch { return; }
-        if (msg.type === 'error' && msg.code === 'AUTH' && !resolved) {
-          resolved = true;
-          clearTimeout(timer);
-          try { ws.close(); } catch {}
-          reject(new Error('AUTH'));
-          return;
-        }
         if (msg.type === 'welcome') {
           this.connected = true;
           this.you = msg.you;
-          if (!resolved) { resolved = true; clearTimeout(timer); resolve(msg); }
+          if (!resolved) { resolved = true; resolve(msg); }
         }
         const fn = this.handlers[msg.type];
         if (fn) fn(msg);
@@ -59,12 +45,12 @@ export class Network {
 
       ws.addEventListener('close', () => {
         this.connected = false;
-        if (!resolved) { resolved = true; clearTimeout(timer); reject(new Error('connection fermée')); }
+        if (!resolved) { resolved = true; reject(new Error('connection fermée')); }
         if (this.handlers.disconnected) this.handlers.disconnected();
       });
 
       ws.addEventListener('error', (e) => {
-        if (!resolved) { resolved = true; clearTimeout(timer); reject(e); }
+        if (!resolved) { resolved = true; reject(e); }
       });
     });
   }

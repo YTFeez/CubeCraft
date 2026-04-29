@@ -362,41 +362,11 @@ pauseDeleteAccountBtn?.addEventListener('click', async () => { await doDeleteAcc
 /** Atlas blocs (async : charge le resource pack `/texture-pack/` par-dessus le procédural). */
 let atlasCanvas = null;
 let atlasTex = null;
-
-function buildEmergencyAtlas() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 64;
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    ctx.fillStyle = '#777';
-    ctx.fillRect(0, 0, 64, 64);
-    ctx.fillStyle = '#999';
-    ctx.fillRect(0, 0, 32, 32);
-    ctx.fillRect(32, 32, 32, 32);
-  }
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.magFilter = THREE.NearestFilter;
-  texture.minFilter = THREE.NearestFilter;
-  texture.wrapS = THREE.ClampToEdgeWrapping;
-  texture.wrapT = THREE.ClampToEdgeWrapping;
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.needsUpdate = true;
-  return { canvas, texture };
-}
-
 async function ensureAtlas() {
   if (atlasCanvas && atlasTex) return;
-  try {
-    const built = await buildAtlas();
-    atlasCanvas = built.canvas;
-    atlasTex = built.texture;
-  } catch (err) {
-    console.error('Atlas load failed, using emergency fallback atlas:', err);
-    const fb = buildEmergencyAtlas();
-    atlasCanvas = fb.canvas;
-    atlasTex = fb.texture;
-  }
+  const built = await buildAtlas();
+  atlasCanvas = built.canvas;
+  atlasTex = built.texture;
 }
 
 window.addEventListener('resize', () => {
@@ -420,55 +390,42 @@ async function joinWorld(themeId) {
   selectionEl.classList.add('hidden');
   loading.classList.remove('hidden');
   progressBar.style.width = '5%';
-  let bootWatchdog = setTimeout(() => {
-    try { if (session) leaveSession(); } catch {}
-    loading.classList.add('hidden');
-    selectionEl.classList.remove('hidden');
-    alert('Le chargement a pris trop de temps. Réessaie.');
-  }, 30000);
 
   try {
     await ensureAtlas();
   } catch (e) {
-    // Ultra-safe fallback: never block world join because of textures.
-    console.error('ensureAtlas hard-failed, forcing emergency atlas:', e);
-    const fb = buildEmergencyAtlas();
-    atlasCanvas = fb.canvas;
-    atlasTex = fb.texture;
+    console.error(e);
+    alert('Impossible de charger les textures du jeu.');
+    selectionEl.classList.remove('hidden');
+    loading.classList.add('hidden');
+    return;
   }
   progressBar.style.width = '10%';
 
-  try {
-    session = await createSession(theme, name);
-    if (!session) throw new Error('SESSION_NULL');
-    setupMobileControls(session);
-    // Initial chunk generation around spawn.
-    await initialGenerate(session);
-  } catch (err) {
+  session = await createSession(theme, name).catch(err => {
     console.error(err);
     if (err && err.message === 'AUTH') {
       clearAuth();
       auth = null;
       loading.classList.add('hidden');
       showAuthScreen();
-      clearTimeout(bootWatchdog);
-      return;
+      return null;
     }
-    const msg = (err && err.message === 'TIMEOUT')
-      ? 'Connexion au serveur trop lente (timeout). Réessaie dans quelques secondes.'
-      : 'Connexion au serveur impossible. Le serveur Node tourne-t-il bien ?';
-    alert(msg);
+    alert('Connexion au serveur impossible. Le serveur Node tourne-t-il bien ?');
     selectionEl.classList.remove('hidden');
     loading.classList.add('hidden');
-    clearTimeout(bootWatchdog);
-    return;
-  }
+    return null;
+  });
+  if (!session) return;
+  setupMobileControls(session);
+
+  // Initial chunk generation around spawn.
+  await initialGenerate(session);
 
   // Show in-game menu (paused) so user clicks "Jouer" once textures and chunks are ready.
   loading.classList.add('hidden');
   menu.classList.remove('hidden');
   menuSubtitle.textContent = `Connecté au monde "${theme.name}" en tant que ${name}`;
-  clearTimeout(bootWatchdog);
 
   if (!animating) { animating = true; animate(); }
 }
@@ -669,27 +626,6 @@ async function createSession(theme, name) {
   const initialSlot = welcome.spawn?.slot | 0;
   let invDirty = false;
   let lastInvSent = 0;
-  const factionReq = async (path, body = null) => {
-    const headers = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + auth.token };
-    const res = await fetch(path, {
-      method: body ? 'POST' : 'GET',
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    let data = null;
-    try { data = await res.json(); } catch {}
-    return data || { ok: false, error: 'Erreur faction' };
-  };
-  const factionApi = {
-    state: () => factionReq('/api/faction'),
-    create: (nameV) => factionReq('/api/faction/create', { name: String(nameV || '').trim() }),
-    invite: (target) => factionReq('/api/faction/invite', { target: String(target || '').trim() }),
-    accept: () => factionReq('/api/faction/accept', {}),
-    decline: () => factionReq('/api/faction/decline', {}),
-    leave: () => factionReq('/api/faction/leave', {}),
-    kick: (target) => factionReq('/api/faction/kick', { target: String(target || '').trim() }),
-    transfer: (target) => factionReq('/api/faction/transfer', { target: String(target || '').trim() }),
-  };
   const interaction = new Interaction({
     camera, world, player, scene, atlasCanvas, audio,
     hotbar: theme.hotbar,
@@ -707,7 +643,6 @@ async function createSession(theme, name) {
     onSlot: (slot) => network.sendSlot(slot),
     onInventoryChange: () => { invDirty = true; },
     onDropItem: (drop) => network.sendDropItem(drop),
-    factionApi,
   });
 
   const session = {
@@ -833,7 +768,6 @@ async function initialGenerate(s) {
   const { world, player } = s;
   const total = (VIEW_RADIUS * 2 + 1) ** 2;
   let done = 0;
-  const deadlineMs = performance.now() + 7000;
 
   // If we have a saved spawn, seed the player's position now so chunks are
   // generated around it (otherwise we generate around 0,0).
@@ -858,7 +792,6 @@ async function initialGenerate(s) {
   }
 
   for (const ring of rings) {
-    if (performance.now() > deadlineMs) break;
     for (const [dx, dz] of ring) {
       const ch = world.ensureChunk(cx + dx, cz + dz);
       world.dirty.add(ch);
@@ -869,10 +802,8 @@ async function initialGenerate(s) {
   }
 
   for (const ch of world.chunks.values()) world.dirty.add(ch);
-  let flushTicks = 0;
-  while (world.dirty.size > 0 && performance.now() <= deadlineMs && flushTicks < 120) {
+  while (world.dirty.size > 0) {
     world.flushDirty(8);
-    flushTicks++;
     await new Promise(r => setTimeout(r, 0));
   }
 
