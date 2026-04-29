@@ -420,6 +420,12 @@ async function joinWorld(themeId) {
   selectionEl.classList.add('hidden');
   loading.classList.remove('hidden');
   progressBar.style.width = '5%';
+  let bootWatchdog = setTimeout(() => {
+    try { if (session) leaveSession(); } catch {}
+    loading.classList.add('hidden');
+    selectionEl.classList.remove('hidden');
+    alert('Le chargement a pris trop de temps. Réessaie.');
+  }, 30000);
 
   try {
     await ensureAtlas();
@@ -445,6 +451,7 @@ async function joinWorld(themeId) {
       auth = null;
       loading.classList.add('hidden');
       showAuthScreen();
+      clearTimeout(bootWatchdog);
       return;
     }
     const msg = (err && err.message === 'TIMEOUT')
@@ -453,6 +460,7 @@ async function joinWorld(themeId) {
     alert(msg);
     selectionEl.classList.remove('hidden');
     loading.classList.add('hidden');
+    clearTimeout(bootWatchdog);
     return;
   }
 
@@ -460,6 +468,7 @@ async function joinWorld(themeId) {
   loading.classList.add('hidden');
   menu.classList.remove('hidden');
   menuSubtitle.textContent = `Connecté au monde "${theme.name}" en tant que ${name}`;
+  clearTimeout(bootWatchdog);
 
   if (!animating) { animating = true; animate(); }
 }
@@ -824,6 +833,7 @@ async function initialGenerate(s) {
   const { world, player } = s;
   const total = (VIEW_RADIUS * 2 + 1) ** 2;
   let done = 0;
+  const deadlineMs = performance.now() + 7000;
 
   // If we have a saved spawn, seed the player's position now so chunks are
   // generated around it (otherwise we generate around 0,0).
@@ -848,6 +858,7 @@ async function initialGenerate(s) {
   }
 
   for (const ring of rings) {
+    if (performance.now() > deadlineMs) break;
     for (const [dx, dz] of ring) {
       const ch = world.ensureChunk(cx + dx, cz + dz);
       world.dirty.add(ch);
@@ -858,8 +869,10 @@ async function initialGenerate(s) {
   }
 
   for (const ch of world.chunks.values()) world.dirty.add(ch);
-  while (world.dirty.size > 0) {
+  let flushTicks = 0;
+  while (world.dirty.size > 0 && performance.now() <= deadlineMs && flushTicks < 120) {
     world.flushDirty(8);
+    flushTicks++;
     await new Promise(r => setTimeout(r, 0));
   }
 
