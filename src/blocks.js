@@ -239,11 +239,18 @@ const RESOURCE_PACK_TEXTURES = '/texture-pack/assets/minecraft/textures/';
 function loadPackImage(url) {
   return new Promise((resolve) => {
     const im = new Image();
+    let done = false;
+    const finish = (imgOrNull) => {
+      if (done) return;
+      done = true;
+      resolve(imgOrNull);
+    };
+    const timer = setTimeout(() => finish(null), 3000);
     // Ne pas mettre crossOrigin en same-origin : sans en-têtes CORS sur les PNG,
     // le navigateur peut refuser l’image et on retombe alors tout le temps sur le procédural.
     im.decoding = 'async';
-    im.onload = () => resolve(im);
-    im.onerror = () => resolve(null);
+    im.onload = () => { clearTimeout(timer); finish(im); };
+    im.onerror = () => { clearTimeout(timer); finish(null); };
     im.src = url;
   });
 }
@@ -326,7 +333,7 @@ const RESOURCE_PACK_SLOTS = [
 ];
 
 async function applyResourcePackTiles(ctx) {
-  await Promise.all(
+  const work = Promise.all(
     RESOURCE_PACK_SLOTS.map(async ({ col, row, rel }) => {
       try {
         const img = await loadPackImage(RESOURCE_PACK_TEXTURES + rel);
@@ -336,6 +343,11 @@ async function applyResourcePackTiles(ctx) {
       }
     }),
   );
+  // Hard cap: even if a browser/network stack keeps requests pending, we proceed.
+  await Promise.race([
+    work,
+    new Promise((resolve) => setTimeout(resolve, 7000)),
+  ]);
 }
 
 function paintProceduralAtlas(ctx) {
