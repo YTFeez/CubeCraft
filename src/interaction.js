@@ -709,6 +709,7 @@ export class Interaction {
     this._refreshInventoryDOM();
     this._buildCraftingList();
     this._buildRecipeBookTab();
+    if (this.mode === 'creative') this.activeInvTab = 'inventory';
     this._setInventoryTab(this.activeInvTab);
     if (document.pointerLockElement) document.exitPointerLock();
   }

@@ -1334,6 +1334,23 @@ select,
 
 #inventory .inv-palette-wrap {
   margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+#inventory .inv-palette {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--slot), 1fr));
+  gap: var(--gap);
+  max-height: min(38vh, 420px);
+  overflow: auto;
+  padding-right: 6px;
+}
+
+#inventory .palette-slot {
+  cursor: pointer;
 }
 
 #inventory .inv-cursor {
