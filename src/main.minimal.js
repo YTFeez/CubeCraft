@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { buildAtlas } from './blocks.js';
+import { BLOCK, BLOCK_INFO, buildAtlas } from './blocks.js';
 import { World } from './world.js';
 import { Player } from './player.js';
 import { Interaction } from './interaction.js';
@@ -23,6 +23,8 @@ const progressBar = document.getElementById('progress-bar');
 const playBtn = document.getElementById('play-btn');
 const leaveBtn = document.getElementById('leave-btn');
 const chatEl = document.getElementById('chat');
+const chatLog = document.getElementById('chat-log');
+const chatInput = document.getElementById('chat-input');
 const playersPanel = document.getElementById('players-panel');
 const serverInfoEl = document.getElementById('server-info');
 const coordsEl = document.getElementById('coords');
@@ -45,6 +47,128 @@ let animating = false;
 let last = performance.now();
 let fpsFrames = 0;
 let fpsAcc = 0;
+const soloChatState = {
+  sent: [],
+  sentIndex: 0,
+};
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[ch]));
+}
+
+function addChatLine(from, text, color = '#ffffff') {
+  if (!chatLog) return;
+  const line = document.createElement('div');
+  line.className = 'chat-line';
+  line.innerHTML = `<span class="from" style="color:${color}">${escapeHtml(from)}:</span>${escapeHtml(text)}`;
+  chatLog.appendChild(line);
+  while (chatLog.childElementCount > 120) chatLog.removeChild(chatLog.firstChild);
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+function addSystemLine(text, color = '#9aa5b1') {
+  if (!chatLog) return;
+  const line = document.createElement('div');
+  line.className = 'chat-line system';
+  line.innerHTML = `<i style="color:${color}">${escapeHtml(text)}</i>`;
+  chatLog.appendChild(line);
+  while (chatLog.childElementCount > 120) chatLog.removeChild(chatLog.firstChild);
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+function parseTimeArg(arg) {
+  const t = (arg || '').toLowerCase();
+  if (t === 'day' || t === 'jour') return 'day';
+  if (t === 'night' || t === 'nuit') return 'night';
+  if (t === 'noon' || t === 'midi') return 'noon';
+  if (t === 'midnight' || t === 'minuit') return 'midnight';
+  return null;
+}
+
+function resolveBlockId(token) {
+  if (!token) return null;
+  if (/^\d+$/.test(token)) {
+    const id = Number(token);
+    if (BLOCK_INFO[id]) return id;
+    return null;
+  }
+  const key = token.trim().toUpperCase();
+  if (BLOCK[key] != null) return BLOCK[key];
+  const found = Object.entries(BLOCK).find(([k]) => k.toLowerCase() === token.toLowerCase());
+  return found ? found[1] : null;
+}
+
+function runLocalCommand(rawText) {
+  if (!session) return;
+  const [cmdRaw, ...rest] = rawText.trim().split(/\s+/);
+  const cmd = (cmdRaw || '').toLowerCase();
+  const arg = rest.join(' ');
+  const s = session;
+  switch (cmd) {
+    case '/help':
+      addSystemLine('Commandes: /help, /tp x y z, /time <day|night|noon|midnight>, /gamemode <creative|survival>, /give <id|name> [count], /clearinv');
+      return;
+    case '/tp': {
+      if (rest.length < 3) return addSystemLine('Usage: /tp <x> <y> <z>', '#ff8080');
+      const x = Number(rest[0]), y = Number(rest[1]), z = Number(rest[2]);
+      if (![x, y, z].every(Number.isFinite)) return addSystemLine('Coordonnées invalides.', '#ff8080');
+      s.player.position.set(x, y, z);
+      s.player.velocity.set(0, 0, 0);
+      addSystemLine(`Téléporté en ${x} ${y} ${z}`, '#7fd87f');
+      return;
+    }
+    case '/time': {
+      const v = parseTimeArg(arg);
+      if (!v) return addSystemLine('Usage: /time <day|night|noon|midnight>', '#ff8080');
+      const textMap = { day: '☀ jour', night: '☾ nuit', noon: '☀ midi', midnight: '☾ minuit' };
+      clockEl.textContent = textMap[v];
+      addSystemLine(`Heure fixée: ${v}`, '#7fd87f');
+      return;
+    }
+    case '/gamemode':
+    case '/gm': {
+      const m = (rest[0] || '').toLowerCase();
+      if (m !== 'creative' && m !== 'survival') return addSystemLine('Usage: /gamemode <creative|survival>', '#ff8080');
+      s.player.setMode(m);
+      s.interaction.setMode(m);
+      addSystemLine(`Mode changé: ${m}`, '#7fd87f');
+      return;
+    }
+    case '/give': {
+      const id = resolveBlockId(rest[0]);
+      if (id == null) return addSystemLine('Bloc inconnu. Usage: /give <id|name> [count]', '#ff8080');
+      const count = Math.max(1, Math.min(64, Number(rest[1] || 1) | 0));
+      s.interaction.addBlock(id, count);
+      addSystemLine(`+${count} ${BLOCK_INFO[id]?.name || `block ${id}`}`, '#7fd87f');
+      return;
+    }
+    case '/clearinv':
+    case '/clearinventory': {
+      s.interaction.setMode('creative', null);
+      addSystemLine('Inventaire remis à zéro (créatif).', '#7fd87f');
+      return;
+    }
+    default:
+      addSystemLine(`Commande inconnue: ${cmd}`, '#ff8080');
+  }
+}
+
+function openChat() {
+  if (!chatInput || !session) return;
+  chatInput.classList.add('visible');
+  chatInput.value = '';
+  soloChatState.sentIndex = soloChatState.sent.length;
+  chatInput.focus();
+  if (document.pointerLockElement) document.exitPointerLock();
+}
+
+function closeChat() {
+  if (!chatInput) return;
+  chatInput.classList.remove('visible');
+  chatInput.blur();
+}
 
 function buildEmergencyAtlas() {
   const tile = 16;
@@ -239,6 +363,7 @@ window.addEventListener('resize', () => {
 
 canvas.addEventListener('click', () => {
   if (!session || !menu.classList.contains('hidden')) return;
+  if (chatInput?.classList.contains('visible')) return;
   session.player.lock();
 });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -257,11 +382,53 @@ playBtn?.addEventListener('click', () => {
 });
 leaveBtn?.addEventListener('click', () => leaveSession());
 
+chatInput?.addEventListener('keydown', (e) => {
+  if (e.code === 'Enter') {
+    const txt = chatInput.value.trim();
+    if (txt) {
+      if (txt.startsWith('/')) runLocalCommand(txt);
+      else addChatLine('OFFLINE', txt, '#7bdff2');
+      soloChatState.sent.push(txt);
+      if (soloChatState.sent.length > 120) soloChatState.sent.shift();
+    }
+    closeChat();
+    e.preventDefault();
+    return;
+  }
+  if (e.code === 'Escape') {
+    closeChat();
+    e.preventDefault();
+    return;
+  }
+  if (e.code === 'ArrowUp') {
+    if (!soloChatState.sent.length) return;
+    soloChatState.sentIndex = Math.max(0, soloChatState.sentIndex - 1);
+    chatInput.value = soloChatState.sent[soloChatState.sentIndex] || '';
+    e.preventDefault();
+    return;
+  }
+  if (e.code === 'ArrowDown') {
+    if (!soloChatState.sent.length) return;
+    soloChatState.sentIndex = Math.min(soloChatState.sent.length, soloChatState.sentIndex + 1);
+    chatInput.value = soloChatState.sent[soloChatState.sentIndex] || '';
+    e.preventDefault();
+  }
+});
+
+window.addEventListener('keydown', (e) => {
+  if (!session) return;
+  if (e.code === 'KeyT' && !chatInput?.classList.contains('visible')) {
+    openChat();
+    e.preventDefault();
+  }
+});
+
 logoutBtn?.addEventListener('click', () => {});
 deleteAccountBtn?.addEventListener('click', () => {});
 authEl?.classList.add('hidden');
-chatEl?.classList.add('hidden');
+chatEl?.classList.remove('hidden');
 playersPanel?.classList.remove('visible');
 selectionEl.classList.remove('hidden');
 meNameEl.textContent = 'OFFLINE';
 renderWorldCards();
+addSystemLine('Mode solo local: chat et commandes actifs. Tape /help');
