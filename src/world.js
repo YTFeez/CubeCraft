@@ -7,6 +7,10 @@ export const CHUNK_SIZE = 16;
 export const WORLD_HEIGHT = 64;
 export const SEA_LEVEL = 24;
 
+function isFlowerBlock(id) {
+  return id === BLOCK.FLOWER_RED || id === BLOCK.FLOWER_BLUE || id === BLOCK.FLOWER_YELLOW;
+}
+
 // Hierarchical biome layout along the temperature axis.
 // Order is COLD -> TEMPERATE -> HOT. Volcanic is NOT in this list; it is
 // carved INSIDE desert by a separate noise gate (see _biomeAt).
@@ -869,6 +873,44 @@ export class Chunk {
           if (id === BLOCK.AIR) continue;
           const info = BLOCK_INFO[id];
           if (!info) continue;
+          if (isFlowerBlock(id)) {
+            const bucket = trans;
+            const tileIndex = getFaceTile(id, 'side');
+            const [u0, v0, u1, v1] = tileUV(tileIndex);
+            const wx = origin[0] + x;
+            const wy = origin[1] + y;
+            const wz = origin[2] + z;
+            const quads = [
+              [
+                [wx, wy, wz],
+                [wx + 1, wy, wz + 1],
+                [wx, wy + 1, wz],
+                [wx + 1, wy + 1, wz + 1],
+              ],
+              [
+                [wx + 1, wy, wz],
+                [wx, wy, wz + 1],
+                [wx + 1, wy + 1, wz],
+                [wx, wy + 1, wz + 1],
+              ],
+            ];
+            for (const q of quads) {
+              const baseIndex = bucket.positions.length / 3;
+              const uvs = [[u0, v0], [u1, v0], [u0, v1], [u1, v1]];
+              for (let i = 0; i < 4; i++) {
+                const p = q[i];
+                bucket.positions.push(p[0], p[1], p[2]);
+                bucket.normals.push(0, 1, 0);
+                bucket.uvs.push(uvs[i][0], uvs[i][1]);
+                bucket.colors.push(1, 1, 1);
+              }
+              bucket.indices.push(
+                baseIndex, baseIndex + 1, baseIndex + 2,
+                baseIndex + 2, baseIndex + 1, baseIndex + 3
+              );
+            }
+            continue;
+          }
           let bucket;
           if (info.fluid) bucket = water;
           else if (info.transparent) bucket = trans;
