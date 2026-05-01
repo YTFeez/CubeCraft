@@ -97,7 +97,22 @@ function resolveBlockId(token) {
   const key = token.trim().toUpperCase();
   if (BLOCK[key] != null) return BLOCK[key];
   const found = Object.entries(BLOCK).find(([k]) => k.toLowerCase() === token.toLowerCase());
-  return found ? found[1] : null;
+  if (found) return found[1];
+
+  const norm = (s) => String(s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+  const t = norm(token);
+  for (const [idStr, info] of Object.entries(BLOCK_INFO)) {
+    const id = Number(idStr);
+    if (!Number.isFinite(id) || !info?.name) continue;
+    const name = norm(info.name);
+    if (name === t) return id;
+    if (name.includes(t) && t.length >= 4) return id;
+  }
+  return null;
 }
 
 function runLocalCommand(rawText) {

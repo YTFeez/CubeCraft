@@ -63,6 +63,33 @@ for (let i = 0; i < EXTRA_BLOCK_COUNT; i++) {
 }
 export const EXTRA_BLOCK_IDS = Array.from({ length: EXTRA_BLOCK_COUNT }, (_, i) => EXTRA_BLOCK_START + i);
 
+const EXTRA_BLOCK_TEXTURE_BASENAMES = [
+  'cobblestone', 'mossy_cobblestone', 'blackstone', 'deepslate', 'cobbled_deepslate', 'deepslate_bricks', 'deepslate_tiles', 'cracked_deepslate_bricks',
+  'cracked_deepslate_tiles', 'chiseled_deepslate', 'andesite', 'diorite', 'dripstone_block', 'amethyst_block', 'clay', 'coal_block', 'diamond_block',
+  'cut_copper', 'copper_block', 'chiseled_copper', 'exposed_copper', 'exposed_chiseled_copper', 'crimson_planks', 'dark_prismarine',
+  'white_concrete', 'orange_concrete', 'magenta_concrete', 'light_blue_concrete', 'yellow_concrete', 'lime_concrete', 'pink_concrete', 'gray_concrete',
+  'light_gray_concrete', 'cyan_concrete', 'purple_concrete', 'blue_concrete', 'brown_concrete', 'green_concrete', 'red_concrete', 'black_concrete',
+  'white_concrete_powder', 'orange_concrete_powder', 'magenta_concrete_powder', 'light_blue_concrete_powder', 'yellow_concrete_powder', 'lime_concrete_powder', 'pink_concrete_powder', 'gray_concrete_powder',
+  'light_gray_concrete_powder', 'cyan_concrete_powder', 'purple_concrete_powder', 'blue_concrete_powder', 'brown_concrete_powder', 'green_concrete_powder', 'red_concrete_powder', 'black_concrete_powder',
+  'white_wool', 'orange_wool', 'magenta_wool', 'light_blue_wool', 'yellow_wool', 'lime_wool', 'pink_wool', 'gray_wool',
+  'light_gray_wool', 'cyan_wool', 'purple_wool', 'blue_wool', 'brown_wool', 'green_wool', 'red_wool', 'black_wool',
+  'white_terracotta', 'orange_terracotta', 'magenta_terracotta', 'light_blue_terracotta', 'yellow_terracotta', 'lime_terracotta', 'pink_terracotta', 'gray_terracotta',
+  'light_gray_terracotta', 'cyan_terracotta', 'purple_terracotta', 'blue_terracotta', 'brown_terracotta', 'green_terracotta', 'red_terracotta', 'black_terracotta',
+  'white_glazed_terracotta', 'orange_glazed_terracotta', 'magenta_glazed_terracotta', 'light_blue_glazed_terracotta', 'yellow_glazed_terracotta', 'lime_glazed_terracotta', 'pink_glazed_terracotta', 'gray_glazed_terracotta',
+  'light_gray_glazed_terracotta', 'cyan_glazed_terracotta', 'purple_glazed_terracotta', 'blue_glazed_terracotta', 'brown_glazed_terracotta', 'green_glazed_terracotta', 'red_glazed_terracotta', 'black_glazed_terracotta',
+  'white_stained_glass', 'orange_stained_glass', 'magenta_stained_glass', 'light_blue_stained_glass', 'yellow_stained_glass', 'lime_stained_glass', 'pink_stained_glass', 'gray_stained_glass',
+  'light_gray_stained_glass', 'cyan_stained_glass', 'purple_stained_glass', 'blue_stained_glass', 'brown_stained_glass', 'green_stained_glass', 'red_stained_glass', 'black_stained_glass',
+];
+
+const EXTRA_BLOCK_TEXTURES = EXTRA_BLOCK_TEXTURE_BASENAMES.map((base) => `block/${base}.png`);
+
+function toTitleWords(base) {
+  return base
+    .split('_')
+    .map((w) => (w ? (w[0].toUpperCase() + w.slice(1)) : ''))
+    .join(' ');
+}
+
 const TILE = 16;
 const ATLAS_COLS = 4;
 const ATLAS_ROWS = 48;
@@ -120,9 +147,9 @@ const FACE_TILES = {
   [BLOCK.DECO_TILES]:      { top: 164, bottom: 164, side: 164 },
   [BLOCK.DECO_LAMP]:       { top: 165, bottom: 165, side: 165 },
   [BLOCK.DECO_BOOKSHELF]:  { top: 166, bottom: 166, side: 166 },
-  [BLOCK.DYE_RED]:         { top: 170, bottom: 170, side: 170 },
-  [BLOCK.DYE_BLUE]:        { top: 171, bottom: 171, side: 171 },
-  [BLOCK.DYE_YELLOW]:      { top: 172, bottom: 172, side: 172 },
+  [BLOCK.DYE_RED]:         { top: 167, bottom: 167, side: 167 },
+  [BLOCK.DYE_BLUE]:        { top: 168, bottom: 168, side: 168 },
+  [BLOCK.DYE_YELLOW]:      { top: 169, bottom: 169, side: 169 },
   [BLOCK.SAND_RED]:        { top: 170, bottom: 170, side: 170 },
   [BLOCK.SAND_BLUE]:       { top: 171, bottom: 171, side: 171 },
   [BLOCK.SAND_GREEN]:      { top: 172, bottom: 172, side: 172 },
@@ -188,9 +215,13 @@ export const BLOCK_INFO = {
 for (let i = 0; i < EXTRA_BLOCK_COUNT; i++) {
   const id = EXTRA_BLOCK_START + i;
   const tile = 33 + i;
+  const base = EXTRA_BLOCK_TEXTURE_BASENAMES[i % EXTRA_BLOCK_TEXTURE_BASENAMES.length] || `custom_${i + 1}`;
+  let alias = `MC_${base.toUpperCase()}`.replace(/[^A-Z0-9_]/g, '_');
+  while (BLOCK[alias] != null) alias += '_X';
+  BLOCK[alias] = id;
   FACE_TILES[id] = { top: tile, bottom: tile, side: tile };
   BLOCK_INFO[id] = {
-    name: `Bloc custom ${i + 1}`,
+    name: toTitleWords(base),
     solid: true,
     transparent: false,
     fluid: false,
@@ -390,7 +421,8 @@ const RESOURCE_PACK_SLOTS = [
   { col: 0, row: 2, rel: 'block/oak_planks.png' },
   { col: 1, row: 2, rel: 'block/glass.png' },
   { col: 2, row: 2, rel: 'block/bedrock.png' },
-  { col: 3, row: 2, rel: 'block/water_still.png' },
+  // Ce pack n'a pas de texture water_still: on prend blue_ice du pack.
+  { col: 3, row: 2, rel: 'block/blue_ice.png' },
   { col: 0, row: 3, rel: 'block/snow.png' },
   { col: 1, row: 3, rel: 'block/ice.png' },
   { col: 2, row: 3, rel: 'block/cactus_side.png' },
@@ -417,7 +449,7 @@ const RESOURCE_PACK_SLOTS = [
   { col: 2, row: 39, rel: 'block/birch_planks.png' },
   { col: 3, row: 39, rel: 'block/spruce_planks.png' },
   { col: 0, row: 40, rel: 'block/granite.png' },
-  { col: 1, row: 40, rel: 'block/basalt.png' },
+  { col: 1, row: 40, rel: 'block/basalt_side.png' },
   { col: 2, row: 40, rel: 'block/calcite.png' },
   { col: 3, row: 40, rel: 'block/bricks.png' },
   { col: 0, row: 41, rel: 'block/polished_andesite.png' },
@@ -432,9 +464,21 @@ const RESOURCE_PACK_SLOTS = [
   { col: 1, row: 43, rel: 'block/purple_concrete_powder.png' },
 ];
 
+// Force les 120 blocs custom a utiliser des textures du pack (pas procedural).
+// On recycle un pool de textures vanilla pour garder un rendu "pack" partout.
+const EXTRA_BLOCK_RESOURCE_PACK_SLOTS = EXTRA_BLOCK_IDS.map((id, i) => {
+  const tile = FACE_TILES[id]?.side ?? 0;
+  return {
+    col: tile % ATLAS_COLS,
+    row: Math.floor(tile / ATLAS_COLS),
+    rel: EXTRA_BLOCK_TEXTURES[i % EXTRA_BLOCK_TEXTURES.length],
+  };
+});
+
 async function applyResourcePackTiles(ctx) {
+  const slots = [...RESOURCE_PACK_SLOTS, ...EXTRA_BLOCK_RESOURCE_PACK_SLOTS];
   await Promise.all(
-    RESOURCE_PACK_SLOTS.map(async ({ col, row, rel }) => {
+    slots.map(async ({ col, row, rel }) => {
       try {
         const img = await loadPackImage(RESOURCE_PACK_TEXTURES + rel);
         if (img) {
