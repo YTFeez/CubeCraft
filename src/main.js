@@ -609,7 +609,23 @@ async function createSession(theme, name) {
   };
 
   const network = new Network({ url: wsUrl, roomId: theme.id, name, token: auth.token, handlers });
-  const welcome = await network.connect();
+  let welcome = null;
+  let connectErr = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      welcome = await network.connect();
+      connectErr = null;
+      break;
+    } catch (err) {
+      connectErr = err;
+      if (err?.message === 'AUTH') throw err;
+      if (attempt < 3) {
+        // Render free plan can need a few seconds to wake up.
+        await new Promise((r) => setTimeout(r, 1500 * attempt));
+      }
+    }
+  }
+  if (!welcome) throw connectErr || new Error('CONNECT_FAILED');
   chatState.commandList = Array.isArray(welcome.commandList) && welcome.commandList.length
     ? welcome.commandList
     : ['/help'];
