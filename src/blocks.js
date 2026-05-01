@@ -433,7 +433,7 @@ const RESOURCE_PACK_SLOTS = [
 ];
 
 async function applyResourcePackTiles(ctx) {
-  const work = Promise.all(
+  await Promise.all(
     RESOURCE_PACK_SLOTS.map(async ({ col, row, rel }) => {
       try {
         const img = await loadPackImage(RESOURCE_PACK_TEXTURES + rel);
@@ -443,10 +443,6 @@ async function applyResourcePackTiles(ctx) {
       } catch {}
     }),
   );
-  await Promise.race([
-    work,
-    new Promise((resolve) => setTimeout(resolve, 7000)),
-  ]);
 }
 
 function paintProceduralAtlas(ctx) {
