@@ -408,77 +408,104 @@ function tintTile(ctx, col, row, mr, mg, mb) {
   try { ctx.putImageData(img, tx, ty); } catch {}
 }
 
-/** Cases atlas (col,row) alignées sur `FACE_TILES` / tiles procéduraux. */
-const RESOURCE_PACK_SLOTS = [
-  { col: 0, row: 0, rel: 'block/grass_block_top.png' },
-  { col: 1, row: 0, rel: 'block/grass_block_side.png' },
-  { col: 2, row: 0, rel: 'block/dirt.png' },
-  { col: 3, row: 0, rel: 'block/stone.png' },
-  { col: 0, row: 1, rel: 'block/sand.png' },
-  { col: 1, row: 1, rel: 'block/oak_log_top.png' },
-  { col: 2, row: 1, rel: 'block/oak_log.png' },
-  { col: 3, row: 1, rel: 'block/oak_leaves.png' },
-  { col: 0, row: 2, rel: 'block/oak_planks.png' },
-  { col: 1, row: 2, rel: 'block/glass.png' },
-  { col: 2, row: 2, rel: 'block/bedrock.png' },
-  // Ce pack n'a pas de texture water_still: on prend blue_ice du pack.
-  { col: 3, row: 2, rel: 'block/blue_ice.png' },
-  { col: 0, row: 3, rel: 'block/snow.png' },
-  { col: 1, row: 3, rel: 'block/ice.png' },
-  { col: 2, row: 3, rel: 'block/cactus_side.png' },
-  { col: 3, row: 3, rel: 'block/lava_still.png' },
-  { col: 0, row: 4, rel: 'block/obsidian.png' },
-  { col: 0, row: 5, rel: 'block/coal_ore.png' },
-  { col: 1, row: 5, rel: 'block/iron_ore.png' },
-  { col: 2, row: 5, rel: 'block/gold_ore.png' },
-  { col: 3, row: 5, rel: 'block/diamond_ore.png' },
-  { col: 0, row: 6, rel: 'item/stick.png' },
-  { col: 1, row: 6, rel: 'item/coal.png' },
-  { col: 2, row: 6, rel: 'item/iron_ingot.png' },
-  { col: 3, row: 6, rel: 'item/gold_ingot.png' },
-  { col: 0, row: 7, rel: 'item/diamond.png' },
-  { col: 1, row: 7, rel: 'item/wooden_pickaxe.png' },
-  { col: 2, row: 7, rel: 'item/stone_pickaxe.png' },
-  { col: 3, row: 7, rel: 'item/iron_pickaxe.png' },
-  { col: 0, row: 8, rel: 'item/diamond_pickaxe.png' },
-  { col: 1, row: 38, rel: 'block/poppy.png' },
-  { col: 2, row: 38, rel: 'block/cornflower.png' },
-  { col: 3, row: 38, rel: 'block/dandelion.png' },
-  { col: 0, row: 39, rel: 'block/birch_log.png' },
-  { col: 1, row: 39, rel: 'block/spruce_log.png' },
-  { col: 2, row: 39, rel: 'block/birch_planks.png' },
-  { col: 3, row: 39, rel: 'block/spruce_planks.png' },
-  { col: 0, row: 40, rel: 'block/granite.png' },
-  { col: 1, row: 40, rel: 'block/basalt_side.png' },
-  { col: 2, row: 40, rel: 'block/calcite.png' },
-  { col: 3, row: 40, rel: 'block/bricks.png' },
-  { col: 0, row: 41, rel: 'block/polished_andesite.png' },
-  { col: 1, row: 41, rel: 'block/shroomlight.png' },
-  { col: 2, row: 41, rel: 'block/bookshelf.png' },
-  { col: 3, row: 41, rel: 'item/red_dye.png' },
-  { col: 0, row: 42, rel: 'item/blue_dye.png' },
-  { col: 1, row: 42, rel: 'item/yellow_dye.png' },
-  { col: 2, row: 42, rel: 'block/red_sand.png' },
-  { col: 3, row: 42, rel: 'block/blue_concrete_powder.png' },
-  { col: 0, row: 43, rel: 'block/green_concrete_powder.png' },
-  { col: 1, row: 43, rel: 'block/purple_concrete_powder.png' },
-];
+// Mapping nom de texture par bloc/item: le moteur charge les fichiers avec le
+// meme nom que dans le dossier du texture pack.
+const BLOCK_TEXTURE_NAMES = {
+  [BLOCK.GRASS]: { top: 'grass_block_top', side: 'grass_block_side', bottom: 'dirt' },
+  [BLOCK.DIRT]: { all: 'dirt' },
+  [BLOCK.STONE]: { all: 'stone' },
+  [BLOCK.SAND]: { all: 'sand' },
+  [BLOCK.WOOD]: { top: 'oak_log_top', side: 'oak_log', bottom: 'oak_log_top' },
+  [BLOCK.LEAVES]: { all: 'oak_leaves' },
+  [BLOCK.PLANKS]: { all: 'oak_planks' },
+  [BLOCK.GLASS]: { all: 'glass' },
+  [BLOCK.BEDROCK]: { all: 'bedrock' },
+  // Le pack actuel n'a pas water_still -> fallback visuel stable.
+  [BLOCK.WATER]: { all: 'blue_ice' },
+  [BLOCK.WATER_FLOW]: { all: 'blue_ice' },
+  [BLOCK.SNOW]: { all: 'snow' },
+  [BLOCK.ICE]: { all: 'ice' },
+  [BLOCK.CACTUS]: { top: 'cactus_top', side: 'cactus_side', bottom: 'cactus_bottom' },
+  [BLOCK.LAVA]: { all: 'lava_still' },
+  [BLOCK.LAVA_FLOW]: { all: 'lava_still' },
+  [BLOCK.OBSIDIAN]: { all: 'obsidian' },
+  [BLOCK.COAL_ORE]: { all: 'coal_ore' },
+  [BLOCK.IRON_ORE]: { all: 'iron_ore' },
+  [BLOCK.GOLD_ORE]: { all: 'gold_ore' },
+  [BLOCK.DIAMOND_ORE]: { all: 'diamond_ore' },
+  [BLOCK.STICK]: { all: 'stick' },
+  [BLOCK.COAL]: { all: 'coal' },
+  [BLOCK.IRON_INGOT]: { all: 'iron_ingot' },
+  [BLOCK.GOLD_INGOT]: { all: 'gold_ingot' },
+  [BLOCK.DIAMOND]: { all: 'diamond' },
+  [BLOCK.WOODEN_PICKAXE]: { all: 'wooden_pickaxe' },
+  [BLOCK.STONE_PICKAXE]: { all: 'stone_pickaxe' },
+  [BLOCK.IRON_PICKAXE]: { all: 'iron_pickaxe' },
+  [BLOCK.DIAMOND_PICKAXE]: { all: 'diamond_pickaxe' },
+  [BLOCK.FLOWER_RED]: { all: 'poppy' },
+  [BLOCK.FLOWER_BLUE]: { all: 'cornflower' },
+  [BLOCK.FLOWER_YELLOW]: { all: 'dandelion' },
+  [BLOCK.WOOD_BIRCH]: { all: 'birch_log' },
+  [BLOCK.WOOD_SPRUCE]: { all: 'spruce_log' },
+  [BLOCK.PLANKS_BIRCH]: { all: 'birch_planks' },
+  [BLOCK.PLANKS_SPRUCE]: { all: 'spruce_planks' },
+  [BLOCK.ROCK_GRANITE]: { all: 'granite' },
+  [BLOCK.ROCK_BASALT]: { all: 'basalt_side' },
+  [BLOCK.ROCK_MARBLE]: { all: 'calcite' },
+  [BLOCK.DECO_BRICKS]: { all: 'bricks' },
+  [BLOCK.DECO_TILES]: { all: 'polished_andesite' },
+  [BLOCK.DECO_LAMP]: { all: 'shroomlight' },
+  [BLOCK.DECO_BOOKSHELF]: { all: 'bookshelf' },
+  [BLOCK.DYE_RED]: { all: 'red_dye' },
+  [BLOCK.DYE_BLUE]: { all: 'blue_dye' },
+  [BLOCK.DYE_YELLOW]: { all: 'yellow_dye' },
+  [BLOCK.SAND_RED]: { all: 'red_sand' },
+  [BLOCK.SAND_BLUE]: { all: 'blue_concrete_powder' },
+  [BLOCK.SAND_GREEN]: { all: 'green_concrete_powder' },
+  [BLOCK.SAND_PURPLE]: { all: 'purple_concrete_powder' },
+};
 
-// Force les 120 blocs custom a utiliser des textures du pack (pas procedural).
-// On recycle un pool de textures vanilla pour garder un rendu "pack" partout.
-const EXTRA_BLOCK_RESOURCE_PACK_SLOTS = EXTRA_BLOCK_IDS.map((id, i) => {
-  const tile = FACE_TILES[id]?.side ?? 0;
-  return {
-    col: tile % ATLAS_COLS,
-    row: Math.floor(tile / ATLAS_COLS),
-    rel: EXTRA_BLOCK_TEXTURES[i % EXTRA_BLOCK_TEXTURES.length],
-  };
-});
+for (let i = 0; i < EXTRA_BLOCK_IDS.length; i++) {
+  const id = EXTRA_BLOCK_IDS[i];
+  const rel = EXTRA_BLOCK_TEXTURES[i % EXTRA_BLOCK_TEXTURES.length];
+  const base = rel.replace(/^block\//, '').replace(/\.png$/, '');
+  BLOCK_TEXTURE_NAMES[id] = { all: base };
+}
+
+function getTextureBaseName(blockId, face) {
+  const m = BLOCK_TEXTURE_NAMES[blockId];
+  if (!m) return null;
+  return m[face] || m.all || null;
+}
+
+function buildResourcePackSlots() {
+  const slots = [];
+  const seen = new Set();
+  for (const [idStr, faces] of Object.entries(FACE_TILES)) {
+    const id = Number(idStr);
+    if (!Number.isFinite(id)) continue;
+    const folder = BLOCK_INFO[id]?.placeable === false ? 'item' : 'block';
+    for (const face of ['top', 'bottom', 'side']) {
+      const tile = faces[face];
+      if (typeof tile !== 'number') continue;
+      const key = `${tile}:${face}`;
+      if (seen.has(key)) continue;
+      const base = getTextureBaseName(id, face);
+      if (!base) continue;
+      const col = tile % ATLAS_COLS;
+      const row = Math.floor(tile / ATLAS_COLS);
+      slots.push({ col, row, rel: `${folder}/${base}.png` });
+      seen.add(key);
+    }
+  }
+  return slots;
+}
+
+const RESOURCE_PACK_SLOTS = buildResourcePackSlots();
 
 async function applyResourcePackTiles(ctx) {
-  const slots = [...RESOURCE_PACK_SLOTS, ...EXTRA_BLOCK_RESOURCE_PACK_SLOTS];
   await Promise.all(
-    slots.map(async ({ col, row, rel }) => {
+    RESOURCE_PACK_SLOTS.map(async ({ col, row, rel }) => {
       try {
         const img = await loadPackImage(RESOURCE_PACK_TEXTURES + rel);
         if (img) {
