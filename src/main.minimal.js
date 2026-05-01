@@ -375,7 +375,8 @@ document.addEventListener('pointerlockchange', () => {
   if (!session) return;
   const inventoryEl = document.getElementById('inventory');
   const invOpen = inventoryEl && !inventoryEl.classList.contains('hidden');
-  if (!document.pointerLockElement && !invOpen) menu.classList.remove('hidden');
+  const chatOpen = !!chatInput?.classList.contains('visible');
+  if (!document.pointerLockElement && !invOpen && !chatOpen) menu.classList.remove('hidden');
 });
 
 playBtn?.addEventListener('click', () => {
