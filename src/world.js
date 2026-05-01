@@ -646,6 +646,9 @@ export class Chunk {
       }
     }
 
+    // Decorative flowers on grass in every chunk (deterministic).
+    this._scatterFlowers(heights, chRand);
+
     // Caves + ore veins (survival worlds only; deterministic from seed + chunk).
     if (theme.mode === 'survival' && !theme.flat) {
       this._carveCavesAndOres(heights, origin);
@@ -735,6 +738,23 @@ export class Chunk {
       if (h + trunkH < WORLD_HEIGHT - 1) {
         this.set(Math.min(CHUNK_SIZE - 1, tx + 1), h + trunkH, tz, BLOCK.WOOD);
       }
+    }
+  }
+
+  _scatterFlowers(heights, rand) {
+    const attempts = 18;
+    for (let i = 0; i < attempts; i++) {
+      const tx = Math.floor(rand() * CHUNK_SIZE);
+      const tz = Math.floor(rand() * CHUNK_SIZE);
+      const h = heights[tz * CHUNK_SIZE + tx];
+      if (h <= SEA_LEVEL + 1 || h >= WORLD_HEIGHT - 3) continue;
+      if (this.get(tx, h, tz) !== BLOCK.GRASS) continue;
+      if (this.get(tx, h + 1, tz) !== BLOCK.AIR) continue;
+      const roll = rand();
+      const flower = roll < 0.34
+        ? BLOCK.FLOWER_RED
+        : (roll < 0.67 ? BLOCK.FLOWER_BLUE : BLOCK.FLOWER_YELLOW);
+      this.set(tx, h + 1, tz, flower);
     }
   }
 

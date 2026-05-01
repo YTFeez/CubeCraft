@@ -33,6 +33,27 @@ export const BLOCK = {
   STONE_PICKAXE: 28,
   IRON_PICKAXE: 29,
   DIAMOND_PICKAXE: 30,
+  FLOWER_RED: 151,
+  FLOWER_BLUE: 152,
+  FLOWER_YELLOW: 153,
+  WOOD_BIRCH: 154,
+  WOOD_SPRUCE: 155,
+  PLANKS_BIRCH: 156,
+  PLANKS_SPRUCE: 157,
+  ROCK_GRANITE: 158,
+  ROCK_BASALT: 159,
+  ROCK_MARBLE: 160,
+  DECO_BRICKS: 161,
+  DECO_TILES: 162,
+  DECO_LAMP: 163,
+  DECO_BOOKSHELF: 164,
+  DYE_RED: 165,
+  DYE_BLUE: 166,
+  DYE_YELLOW: 167,
+  SAND_RED: 168,
+  SAND_BLUE: 169,
+  SAND_GREEN: 170,
+  SAND_PURPLE: 171,
 };
 
 const EXTRA_BLOCK_START = 31;
@@ -44,7 +65,7 @@ export const EXTRA_BLOCK_IDS = Array.from({ length: EXTRA_BLOCK_COUNT }, (_, i) 
 
 const TILE = 16;
 const ATLAS_COLS = 4;
-const ATLAS_ROWS = 40;
+const ATLAS_ROWS = 48;
 
 // Tile index in the atlas (col + row * ATLAS_COLS). 4x5 grid:
 //  0 grass_top    1 grass_side  2 dirt        3 stone
@@ -85,6 +106,27 @@ const FACE_TILES = {
   [BLOCK.STONE_PICKAXE]:   { top: 30, bottom: 30, side: 30 },
   [BLOCK.IRON_PICKAXE]:    { top: 31, bottom: 31, side: 31 },
   [BLOCK.DIAMOND_PICKAXE]: { top: 32, bottom: 32, side: 32 },
+  [BLOCK.FLOWER_RED]:      { top: 153, bottom: 153, side: 153 },
+  [BLOCK.FLOWER_BLUE]:     { top: 154, bottom: 154, side: 154 },
+  [BLOCK.FLOWER_YELLOW]:   { top: 155, bottom: 155, side: 155 },
+  [BLOCK.WOOD_BIRCH]:      { top: 156, bottom: 156, side: 156 },
+  [BLOCK.WOOD_SPRUCE]:     { top: 157, bottom: 157, side: 157 },
+  [BLOCK.PLANKS_BIRCH]:    { top: 158, bottom: 158, side: 158 },
+  [BLOCK.PLANKS_SPRUCE]:   { top: 159, bottom: 159, side: 159 },
+  [BLOCK.ROCK_GRANITE]:    { top: 160, bottom: 160, side: 160 },
+  [BLOCK.ROCK_BASALT]:     { top: 161, bottom: 161, side: 161 },
+  [BLOCK.ROCK_MARBLE]:     { top: 162, bottom: 162, side: 162 },
+  [BLOCK.DECO_BRICKS]:     { top: 163, bottom: 163, side: 163 },
+  [BLOCK.DECO_TILES]:      { top: 164, bottom: 164, side: 164 },
+  [BLOCK.DECO_LAMP]:       { top: 165, bottom: 165, side: 165 },
+  [BLOCK.DECO_BOOKSHELF]:  { top: 166, bottom: 166, side: 166 },
+  [BLOCK.DYE_RED]:         { top: 167, bottom: 167, side: 167 },
+  [BLOCK.DYE_BLUE]:        { top: 168, bottom: 168, side: 168 },
+  [BLOCK.DYE_YELLOW]:      { top: 169, bottom: 169, side: 169 },
+  [BLOCK.SAND_RED]:        { top: 170, bottom: 170, side: 170 },
+  [BLOCK.SAND_BLUE]:       { top: 171, bottom: 171, side: 171 },
+  [BLOCK.SAND_GREEN]:      { top: 172, bottom: 172, side: 172 },
+  [BLOCK.SAND_PURPLE]:     { top: 173, bottom: 173, side: 173 },
 };
 
 // hardness = secondes de base (main ou bon outil bas) · harvestLevel 0 = main OK,
@@ -120,6 +162,27 @@ export const BLOCK_INFO = {
   [BLOCK.STONE_PICKAXE]:   { name: 'Pioche en pierre', solid: true, transparent: false, fluid: false, emissive: 0, placeable: false, pickaxeTier: 2, hardness: 0 },
   [BLOCK.IRON_PICKAXE]:    { name: 'Pioche en fer',    solid: true, transparent: false, fluid: false, emissive: 0, placeable: false, pickaxeTier: 3, hardness: 0 },
   [BLOCK.DIAMOND_PICKAXE]: { name: 'Pioche en diamant',solid: true, transparent: false, fluid: false, emissive: 0, placeable: false, pickaxeTier: 4, hardness: 0 },
+  [BLOCK.FLOWER_RED]:      { name: 'Fleur rouge',      solid: true, transparent: true,  fluid: false, emissive: 0, placeable: true, hardness: 0.02, harvestLevel: 0, harvestTool: null },
+  [BLOCK.FLOWER_BLUE]:     { name: 'Fleur bleue',      solid: true, transparent: true,  fluid: false, emissive: 0, placeable: true, hardness: 0.02, harvestLevel: 0, harvestTool: null },
+  [BLOCK.FLOWER_YELLOW]:   { name: 'Fleur jaune',      solid: true, transparent: true,  fluid: false, emissive: 0, placeable: true, hardness: 0.02, harvestLevel: 0, harvestTool: null },
+  [BLOCK.WOOD_BIRCH]:      { name: 'Bûche de bouleau', solid: true, transparent: false, fluid: false, emissive: 0, placeable: true, hardness: 0.3, harvestLevel: 0, harvestTool: null },
+  [BLOCK.WOOD_SPRUCE]:     { name: 'Bûche de sapin',   solid: true, transparent: false, fluid: false, emissive: 0, placeable: true, hardness: 0.3, harvestLevel: 0, harvestTool: null },
+  [BLOCK.PLANKS_BIRCH]:    { name: 'Planches bouleau', solid: true, transparent: false, fluid: false, emissive: 0, placeable: true, hardness: 0.2, harvestLevel: 0, harvestTool: null },
+  [BLOCK.PLANKS_SPRUCE]:   { name: 'Planches sapin',   solid: true, transparent: false, fluid: false, emissive: 0, placeable: true, hardness: 0.2, harvestLevel: 0, harvestTool: null },
+  [BLOCK.ROCK_GRANITE]:    { name: 'Granite',          solid: true, transparent: false, fluid: false, emissive: 0, placeable: true, hardness: 0.45, harvestLevel: 1, harvestTool: 'pickaxe' },
+  [BLOCK.ROCK_BASALT]:     { name: 'Basalte',          solid: true, transparent: false, fluid: false, emissive: 0, placeable: true, hardness: 0.5, harvestLevel: 1, harvestTool: 'pickaxe' },
+  [BLOCK.ROCK_MARBLE]:     { name: 'Marbre',           solid: true, transparent: false, fluid: false, emissive: 0, placeable: true, hardness: 0.4, harvestLevel: 1, harvestTool: 'pickaxe' },
+  [BLOCK.DECO_BRICKS]:     { name: 'Briques décoratives', solid: true, transparent: false, fluid: false, emissive: 0, placeable: true, hardness: 0.35, harvestLevel: 0, harvestTool: null },
+  [BLOCK.DECO_TILES]:      { name: 'Dalles décoratives',  solid: true, transparent: false, fluid: false, emissive: 0, placeable: true, hardness: 0.35, harvestLevel: 0, harvestTool: null },
+  [BLOCK.DECO_LAMP]:       { name: 'Lampe déco',       solid: true, transparent: false, fluid: false, emissive: 1, placeable: true, hardness: 0.2, harvestLevel: 0, harvestTool: null },
+  [BLOCK.DECO_BOOKSHELF]:  { name: 'Bibliothèque',     solid: true, transparent: false, fluid: false, emissive: 0, placeable: true, hardness: 0.2, harvestLevel: 0, harvestTool: null },
+  [BLOCK.DYE_RED]:         { name: 'Colorant rouge',   solid: true, transparent: false, fluid: false, emissive: 0, placeable: false, hardness: 0 },
+  [BLOCK.DYE_BLUE]:        { name: 'Colorant bleu',    solid: true, transparent: false, fluid: false, emissive: 0, placeable: false, hardness: 0 },
+  [BLOCK.DYE_YELLOW]:      { name: 'Colorant jaune',   solid: true, transparent: false, fluid: false, emissive: 0, placeable: false, hardness: 0 },
+  [BLOCK.SAND_RED]:        { name: 'Sable rouge',      solid: true, transparent: false, fluid: false, emissive: 0, placeable: true, hardness: 0.12, harvestLevel: 0, harvestTool: null },
+  [BLOCK.SAND_BLUE]:       { name: 'Sable bleu',       solid: true, transparent: false, fluid: false, emissive: 0, placeable: true, hardness: 0.12, harvestLevel: 0, harvestTool: null },
+  [BLOCK.SAND_GREEN]:      { name: 'Sable vert',       solid: true, transparent: false, fluid: false, emissive: 0, placeable: true, hardness: 0.12, harvestLevel: 0, harvestTool: null },
+  [BLOCK.SAND_PURPLE]:     { name: 'Sable violet',     solid: true, transparent: false, fluid: false, emissive: 0, placeable: true, hardness: 0.12, harvestLevel: 0, harvestTool: null },
 };
 
 for (let i = 0; i < EXTRA_BLOCK_COUNT; i++) {
@@ -346,6 +409,27 @@ const RESOURCE_PACK_SLOTS = [
   { col: 2, row: 7, rel: 'item/stone_pickaxe.png' },
   { col: 3, row: 7, rel: 'item/iron_pickaxe.png' },
   { col: 0, row: 8, rel: 'item/diamond_pickaxe.png' },
+  { col: 1, row: 38, rel: 'block/poppy.png' },
+  { col: 2, row: 38, rel: 'block/cornflower.png' },
+  { col: 3, row: 38, rel: 'block/dandelion.png' },
+  { col: 0, row: 39, rel: 'block/birch_log.png' },
+  { col: 1, row: 39, rel: 'block/spruce_log.png' },
+  { col: 2, row: 39, rel: 'block/birch_planks.png' },
+  { col: 3, row: 39, rel: 'block/spruce_planks.png' },
+  { col: 0, row: 40, rel: 'block/granite.png' },
+  { col: 1, row: 40, rel: 'block/basalt.png' },
+  { col: 2, row: 40, rel: 'block/calcite.png' },
+  { col: 3, row: 40, rel: 'block/bricks.png' },
+  { col: 0, row: 41, rel: 'block/polished_andesite.png' },
+  { col: 1, row: 41, rel: 'block/shroomlight.png' },
+  { col: 2, row: 41, rel: 'block/bookshelf.png' },
+  { col: 3, row: 41, rel: 'item/red_dye.png' },
+  { col: 0, row: 42, rel: 'item/blue_dye.png' },
+  { col: 1, row: 42, rel: 'item/yellow_dye.png' },
+  { col: 2, row: 42, rel: 'block/red_sand.png' },
+  { col: 3, row: 42, rel: 'block/blue_wool.png' },
+  { col: 0, row: 43, rel: 'block/green_wool.png' },
+  { col: 1, row: 43, rel: 'block/purple_wool.png' },
 ];
 
 async function applyResourcePackTiles(ctx) {
@@ -719,6 +803,38 @@ function paintProceduralAtlas(ctx) {
       noisePaint(c, base, 18, 1000 + i * 13);
       speckle(c, [255, 255, 255], 7 + (i % 4), 2000 + i * 17, 0.22);
       speckle(c, [0, 0, 0], 8 + (i % 5), 3000 + i * 19, 0.18);
+    });
+  }
+
+  const specialTiles = [
+    { tile: 153, color: [205, 58, 74] },
+    { tile: 154, color: [76, 122, 210] },
+    { tile: 155, color: [224, 194, 62] },
+    { tile: 156, color: [206, 188, 150] },
+    { tile: 157, color: [88, 63, 44] },
+    { tile: 158, color: [216, 190, 142] },
+    { tile: 159, color: [132, 101, 74] },
+    { tile: 160, color: [153, 122, 112] },
+    { tile: 161, color: [68, 68, 74] },
+    { tile: 162, color: [220, 224, 228] },
+    { tile: 163, color: [154, 58, 44] },
+    { tile: 164, color: [123, 128, 138] },
+    { tile: 165, color: [248, 186, 86] },
+    { tile: 166, color: [122, 90, 63] },
+    { tile: 167, color: [206, 64, 64] },
+    { tile: 168, color: [68, 114, 208] },
+    { tile: 169, color: [224, 194, 62] },
+    { tile: 170, color: [198, 88, 62] },
+    { tile: 171, color: [74, 132, 206] },
+    { tile: 172, color: [86, 158, 96] },
+    { tile: 173, color: [154, 96, 188] },
+  ];
+  for (const t of specialTiles) {
+    const col = t.tile % ATLAS_COLS;
+    const row = Math.floor(t.tile / ATLAS_COLS);
+    fillTile(ctx, col, row, c => {
+      noisePaint(c, t.color, 16, 5000 + t.tile * 11);
+      speckle(c, [255, 255, 255], 6, 6000 + t.tile * 13, 0.2);
     });
   }
 }

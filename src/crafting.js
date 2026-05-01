@@ -75,6 +75,123 @@ export const RECIPES = [
     ingredients: [{ id: BLOCK.GOLD_ORE, count: 2 }],
     result: { id: BLOCK.GOLD_INGOT, count: 1 },
   },
+  // --- Fleurs -> colorants ---
+  {
+    type: 'shapeless',
+    id: 'red_dye_from_flower',
+    ingredients: [{ id: BLOCK.FLOWER_RED, count: 1 }],
+    result: { id: BLOCK.DYE_RED, count: 2 },
+  },
+  {
+    type: 'shapeless',
+    id: 'blue_dye_from_flower',
+    ingredients: [{ id: BLOCK.FLOWER_BLUE, count: 1 }],
+    result: { id: BLOCK.DYE_BLUE, count: 2 },
+  },
+  {
+    type: 'shapeless',
+    id: 'yellow_dye_from_flower',
+    ingredients: [{ id: BLOCK.FLOWER_YELLOW, count: 1 }],
+    result: { id: BLOCK.DYE_YELLOW, count: 2 },
+  },
+  // --- Bois variés ---
+  {
+    type: 'shapeless',
+    id: 'birch_planks_from_birch_wood',
+    ingredients: [{ id: BLOCK.WOOD_BIRCH, count: 1 }],
+    result: { id: BLOCK.PLANKS_BIRCH, count: 4 },
+  },
+  {
+    type: 'shapeless',
+    id: 'spruce_planks_from_spruce_wood',
+    ingredients: [{ id: BLOCK.WOOD_SPRUCE, count: 1 }],
+    result: { id: BLOCK.PLANKS_SPRUCE, count: 4 },
+  },
+  {
+    type: 'shapeless',
+    id: 'birch_wood_from_wood_and_yellow_dye',
+    ingredients: [{ id: BLOCK.WOOD, count: 1 }, { id: BLOCK.DYE_YELLOW, count: 1 }],
+    result: { id: BLOCK.WOOD_BIRCH, count: 1 },
+  },
+  {
+    type: 'shapeless',
+    id: 'spruce_wood_from_wood_and_blue_dye',
+    ingredients: [{ id: BLOCK.WOOD, count: 1 }, { id: BLOCK.DYE_BLUE, count: 1 }],
+    result: { id: BLOCK.WOOD_SPRUCE, count: 1 },
+  },
+  // --- Roches ---
+  {
+    type: 'shapeless',
+    id: 'granite_from_stone',
+    ingredients: [{ id: BLOCK.STONE, count: 2 }],
+    result: { id: BLOCK.ROCK_GRANITE, count: 1 },
+  },
+  {
+    type: 'shapeless',
+    id: 'basalt_from_stone_and_coal',
+    ingredients: [{ id: BLOCK.STONE, count: 2 }, { id: BLOCK.COAL, count: 1 }],
+    result: { id: BLOCK.ROCK_BASALT, count: 1 },
+  },
+  {
+    type: 'shapeless',
+    id: 'marble_from_stone_and_snow',
+    ingredients: [{ id: BLOCK.STONE, count: 2 }, { id: BLOCK.SNOW, count: 1 }],
+    result: { id: BLOCK.ROCK_MARBLE, count: 1 },
+  },
+  // --- Décoration ---
+  {
+    type: 'shaped',
+    id: 'deco_bricks',
+    pattern: ['RR ', 'RR ', '   '],
+    keys: { R: BLOCK.ROCK_GRANITE },
+    result: { id: BLOCK.DECO_BRICKS, count: 4 },
+  },
+  {
+    type: 'shaped',
+    id: 'deco_tiles',
+    pattern: ['MM ', 'MM ', '   '],
+    keys: { M: BLOCK.ROCK_MARBLE },
+    result: { id: BLOCK.DECO_TILES, count: 4 },
+  },
+  {
+    type: 'shaped',
+    id: 'deco_lamp',
+    pattern: [' C ', 'CBC', ' C '],
+    keys: { C: BLOCK.COAL, B: BLOCK.DECO_BRICKS },
+    result: { id: BLOCK.DECO_LAMP, count: 1 },
+  },
+  {
+    type: 'shaped',
+    id: 'deco_bookshelf',
+    pattern: ['PPP', 'DDD', 'PPP'],
+    keys: { P: BLOCK.PLANKS, D: BLOCK.DIAMOND },
+    result: { id: BLOCK.DECO_BOOKSHELF, count: 1 },
+  },
+  // --- Sables colorés craftables ---
+  {
+    type: 'shapeless',
+    id: 'red_sand_from_dye',
+    ingredients: [{ id: BLOCK.SAND, count: 1 }, { id: BLOCK.DYE_RED, count: 1 }],
+    result: { id: BLOCK.SAND_RED, count: 1 },
+  },
+  {
+    type: 'shapeless',
+    id: 'blue_sand_from_dye',
+    ingredients: [{ id: BLOCK.SAND, count: 1 }, { id: BLOCK.DYE_BLUE, count: 1 }],
+    result: { id: BLOCK.SAND_BLUE, count: 1 },
+  },
+  {
+    type: 'shapeless',
+    id: 'green_sand_from_dye',
+    ingredients: [{ id: BLOCK.SAND, count: 1 }, { id: BLOCK.DYE_YELLOW, count: 1 }, { id: BLOCK.DYE_BLUE, count: 1 }],
+    result: { id: BLOCK.SAND_GREEN, count: 1 },
+  },
+  {
+    type: 'shapeless',
+    id: 'purple_sand_from_dye',
+    ingredients: [{ id: BLOCK.SAND, count: 1 }, { id: BLOCK.DYE_RED, count: 1 }, { id: BLOCK.DYE_BLUE, count: 1 }],
+    result: { id: BLOCK.SAND_PURPLE, count: 1 },
+  },
 ];
 
 // ---------------------------------------------------------------------------

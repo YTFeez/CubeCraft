@@ -34,6 +34,12 @@ const CREATIVE_PALETTE = [
   BLOCK.GRASS, BLOCK.DIRT, BLOCK.STONE, BLOCK.SAND,
   BLOCK.WOOD, BLOCK.PLANKS, BLOCK.LEAVES, BLOCK.GLASS,
   BLOCK.SNOW, BLOCK.ICE, BLOCK.CACTUS, BLOCK.OBSIDIAN,
+  BLOCK.FLOWER_RED, BLOCK.FLOWER_BLUE, BLOCK.FLOWER_YELLOW,
+  BLOCK.WOOD_BIRCH, BLOCK.WOOD_SPRUCE, BLOCK.PLANKS_BIRCH, BLOCK.PLANKS_SPRUCE,
+  BLOCK.ROCK_GRANITE, BLOCK.ROCK_BASALT, BLOCK.ROCK_MARBLE,
+  BLOCK.DECO_BRICKS, BLOCK.DECO_TILES, BLOCK.DECO_LAMP, BLOCK.DECO_BOOKSHELF,
+  BLOCK.DYE_RED, BLOCK.DYE_BLUE, BLOCK.DYE_YELLOW,
+  BLOCK.SAND_RED, BLOCK.SAND_BLUE, BLOCK.SAND_GREEN, BLOCK.SAND_PURPLE,
 ];
 
 export class Interaction {
@@ -1075,6 +1081,27 @@ export class Interaction {
       this._mining = { x, y, z, id, progress: 0 };
       this._setMineBar(0.01);
     } else if (e.button === 2) {
+      const handId = this.slots[this.selectedIndex]?.id;
+      const isDye = handId === BLOCK.DYE_RED || handId === BLOCK.DYE_BLUE || handId === BLOCK.DYE_YELLOW;
+      if (isDye) {
+        const cur = hit.block.id;
+        const isSandFamily =
+          cur === BLOCK.SAND || cur === BLOCK.SAND_RED || cur === BLOCK.SAND_BLUE || cur === BLOCK.SAND_GREEN || cur === BLOCK.SAND_PURPLE;
+        if (isSandFamily) {
+          let next = null;
+          if (handId === BLOCK.DYE_RED) next = BLOCK.SAND_RED;
+          else if (handId === BLOCK.DYE_BLUE) next = BLOCK.SAND_BLUE;
+          else if (handId === BLOCK.DYE_YELLOW) next = BLOCK.SAND_GREEN;
+          if (next != null && next !== cur) {
+            if (!this._consumeSelected()) return;
+            this.world.setBlock(hit.block.x, hit.block.y, hit.block.z, next);
+            this.audio?.playPlace(next);
+            this.onEdit?.(hit.block.x, hit.block.y, hit.block.z, next);
+            this.onChange?.();
+          }
+          return;
+        }
+      }
       const id = this.selectedBlock();
       if (id == null) return;
       const nx = hit.block.x + hit.normal.x;
