@@ -125,7 +125,7 @@ function runLocalCommand(rawText) {
   const s = session;
   switch (cmd) {
     case '/help':
-      addSystemLine('Commandes: /help, /tp x y z, /time <day|night|noon|midnight>, /gamemode <creative|survival>, /fly, /give <id|name> [count], /clearinv');
+      addSystemLine('Commandes: /help, /tp x y z, /time <day|night|noon|midnight>, /gamemode <creative|survival>, /fly, /give <id|name> [count], /clearinv, /locate biome <id>, /locate structure <ruin|oasis|ice_spike>');
       return;
     case '/tp': {
       if (rest.length < 3) return addSystemLine('Usage: /tp <x> <y> <z>', '#ff8080');
@@ -172,6 +172,30 @@ function runLocalCommand(rawText) {
     case '/clearinventory': {
       s.interaction.setMode('creative', null);
       addSystemLine('Inventaire remis à zéro (créatif).', '#7fd87f');
+      return;
+    }
+    case '/locate': {
+      const kind = (rest[0] || '').toLowerCase();
+      if (kind !== 'biome' && kind !== 'structure') {
+        addSystemLine('Usage: /locate biome <id> | /locate structure <ruin|oasis|ice_spike>', '#ff8080');
+        return;
+      }
+      const target = rest.slice(1).join('_').toLowerCase();
+      if (!target) {
+        addSystemLine(`Usage: /locate ${kind} <nom>`, '#ff8080');
+        return;
+      }
+      const px = Math.floor(s.player.position.x);
+      const pz = Math.floor(s.player.position.z);
+      if (kind === 'biome') {
+        const hit = s.world.locateNearestBiome(target, px, pz, { maxRadius: 3600, step: 16 });
+        if (!hit) return addSystemLine(`Biome introuvable: ${target}`, '#ff8080');
+        addSystemLine(`Biome ${target} -> x:${hit.x} z:${hit.z} (~${Math.round(hit.distance)} blocs)`, '#7fd87f');
+        return;
+      }
+      const hit = s.world.locateNearestStructure(target, px, pz, { chunkRadius: 20 });
+      if (!hit) return addSystemLine(`Structure introuvable: ${target}`, '#ff8080');
+      addSystemLine(`Structure ${target} -> x:${hit.x} z:${hit.z} (~${Math.round(hit.distance)} blocs)`, '#7fd87f');
       return;
     }
     default:

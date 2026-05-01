@@ -20,6 +20,32 @@ const T_BANDS = [
   BIOMES.desert, // T = +0.7  (hot, contains volcanic patches)
 ];
 
+const PATCH_BIOMES = [
+  { biome: BIOMES.swamp,          climate: 'temperate', threshold: 0.56, scale: 2.4, ox: 2100, oz: -4200 },
+  { biome: BIOMES.meadow,         climate: 'temperate', threshold: 0.58, scale: 2.1, ox: -1700, oz: 3300 },
+  { biome: BIOMES.cherry_grove,   climate: 'temperate', threshold: 0.60, scale: 2.3, ox: 9200, oz: 4400 },
+  { biome: BIOMES.taiga,          climate: 'cold',      threshold: 0.57, scale: 2.2, ox: -500, oz: 8400 },
+  { biome: BIOMES.savanna,        climate: 'hot',       threshold: 0.58, scale: 2.2, ox: 7300, oz: -1200 },
+  { biome: BIOMES.jungle,         climate: 'hot',       threshold: 0.60, scale: 2.5, ox: -8300, oz: 1500 },
+  { biome: BIOMES.bamboo_jungle,  climate: 'hot',       threshold: 0.62, scale: 2.8, ox: -9300, oz: 5100 },
+  { biome: BIOMES.mangrove,       climate: 'temperate', threshold: 0.60, scale: 2.6, ox: 3100, oz: 7600 },
+  { biome: BIOMES.mushroom_fields,climate: 'temperate', threshold: 0.64, scale: 2.9, ox: -6200, oz: -5300 },
+  { biome: BIOMES.oasis,          climate: 'hot',       threshold: 0.61, scale: 2.7, ox: 4300, oz: -8100 },
+  { biome: BIOMES.badlands,       climate: 'hot',       threshold: 0.57, scale: 2.2, ox: 1200, oz: -6400 },
+  { biome: BIOMES.mesa,           climate: 'hot',       threshold: 0.60, scale: 2.4, ox: 8700, oz: -3200 },
+  { biome: BIOMES.canyon,         climate: 'hot',       threshold: 0.62, scale: 2.7, ox: 2600, oz: 9100 },
+  { biome: BIOMES.frozen_river,   climate: 'cold',      threshold: 0.58, scale: 2.5, ox: -4100, oz: 9100 },
+  { biome: BIOMES.ice_spikes,     climate: 'cold',      threshold: 0.61, scale: 2.7, ox: -9700, oz: 2700 },
+  { biome: BIOMES.glacier,        climate: 'cold',      threshold: 0.56, scale: 2.3, ox: -7600, oz: -1100 },
+  { biome: BIOMES.dark_forest,    climate: 'temperate', threshold: 0.59, scale: 2.4, ox: -1100, oz: -9100 },
+  { biome: BIOMES.flower_fields,  climate: 'temperate', threshold: 0.58, scale: 2.2, ox: 5600, oz: 2800 },
+  { biome: BIOMES.rocky_peaks,    climate: 'cold',      threshold: 0.60, scale: 2.6, ox: -2800, oz: -7400 },
+  { biome: BIOMES.stony_shore,    climate: 'temperate', threshold: 0.59, scale: 2.3, ox: 6900, oz: -5100 },
+  { biome: BIOMES.basalt_delta,   climate: 'hot',       threshold: 0.63, scale: 2.8, ox: 9900, oz: 1700 },
+  { biome: BIOMES.crystal_plains, climate: 'cold',      threshold: 0.61, scale: 2.7, ox: -8800, oz: -4200 },
+  { biome: BIOMES.dry_wastes,     climate: 'hot',       threshold: 0.60, scale: 2.4, ox: 1500, oz: 6800 },
+];
+
 const FACES = [
   // +X
   { dir: [1, 0, 0],  corners: [[1,0,0],[1,0,1],[1,1,0],[1,1,1]], uvOrder: 'side', normal: [1,0,0] },
@@ -75,6 +101,7 @@ export class World {
     this.rand = rand;
     this.dirty = new Set();
     this.fluidLevels = new Map(); // key "x,y,z" -> flow level
+    this.structureMarkers = new Map(); // key "type:x,z" -> { type, x, z }
   }
 
   getChunkEdits(cx, cz, create = false) {
@@ -203,6 +230,71 @@ export class World {
         this.dirty.delete(ch);
       }
     }
+  }
+
+  _biomeIdAt(wx, wz) {
+    const theme = this.theme;
+    if (!theme.multiBiome) return 'theme';
+    const biomeFreq = theme.biomeFreq || 0.005;
+    const [cx, cz] = this.worldToChunk(wx, wz);
+    const ch = this.ensureChunk(cx, cz);
+    return ch._biomeAt(wx, wz, biomeFreq).dominant?.id || 'unknown';
+  }
+
+  locateNearestBiome(targetBiomeId, ox, oz, { maxRadius = 2400, step = 16 } = {}) {
+    const target = String(targetBiomeId || '').toLowerCase();
+    if (!target) return null;
+    const sx = Math.floor(ox);
+    const sz = Math.floor(oz);
+    for (let r = 0; r <= maxRadius; r += step) {
+      for (let x = sx - r; x <= sx + r; x += step) {
+        for (const z of [sz - r, sz + r]) {
+          if (this._biomeIdAt(x, z) === target) {
+            return { x, z, distance: Math.hypot(x - sx, z - sz) };
+          }
+        }
+      }
+      for (let z = sz - r + step; z <= sz + r - step; z += step) {
+        for (const x of [sx - r, sx + r]) {
+          if (this._biomeIdAt(x, z) === target) {
+            return { x, z, distance: Math.hypot(x - sx, z - sz) };
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  addStructureMarker(type, x, z) {
+    const tx = Math.floor(x);
+    const tz = Math.floor(z);
+    const key = `${type}:${tx},${tz}`;
+    if (!this.structureMarkers.has(key)) {
+      this.structureMarkers.set(key, { type, x: tx, z: tz });
+    }
+  }
+
+  locateNearestStructure(type, ox, oz, { chunkRadius = 18 } = {}) {
+    const wanted = String(type || '').toLowerCase();
+    const [ccx, ccz] = this.worldToChunk(ox, oz);
+    // Ensure enough chunks are generated before searching markers.
+    for (let r = 0; r <= chunkRadius; r++) {
+      for (let dx = -r; dx <= r; dx++) {
+        this.ensureChunk(ccx + dx, ccz - r);
+        this.ensureChunk(ccx + dx, ccz + r);
+      }
+      for (let dz = -r + 1; dz <= r - 1; dz++) {
+        this.ensureChunk(ccx - r, ccz + dz);
+        this.ensureChunk(ccx + r, ccz + dz);
+      }
+    }
+    let best = null;
+    for (const m of this.structureMarkers.values()) {
+      if (wanted && m.type !== wanted) continue;
+      const d = Math.hypot(m.x - ox, m.z - oz);
+      if (!best || d < best.distance) best = { ...m, distance: d };
+    }
+    return best;
   }
 
   // Serialize user edits (so regen-on-load keeps modifications).
@@ -521,38 +613,26 @@ export class Chunk {
       heightFreq[2]+= wi * b.heightFreq[2];
     }
 
-    // 6) Secondary sub-biomes carved inside the major T-bands.
-    // - swamp in forest
-    // - badlands in desert
-    // - glacier in tundra
-    const S = w.biomeNoiseB(wx * freq * 2.6 + 2800, wz * freq * 2.6 - 1450);
-    const B = w.biomeNoiseA(wx * freq * 2.4 - 3500, wz * freq * 2.4 + 4100);
-    const G = w.biomeNoiseA(wx * freq * 2.8 + 7200, wz * freq * 2.8 + 800);
-    const forestW = ws[1];
-    const tundraW = ws[0];
-    let swampFactor = 0;
-    let badlandsFactor = 0;
-    let glacierFactor = 0;
-    if (forestW > 0.55 && S > 0.28) {
-      const st = Math.min(1, (S - 0.28) / 0.32);
-      const ft = Math.min(1, (forestW - 0.55) / 0.30);
-      const sS = st * st * (3 - 2 * st);
-      const sF = ft * ft * (3 - 2 * ft);
-      swampFactor = sS * sF;
-    }
-    if (desertW > 0.60 && B > 0.22) {
-      const bt = Math.min(1, (B - 0.22) / 0.35);
-      const dt = Math.min(1, (desertW - 0.60) / 0.25);
-      const sB = bt * bt * (3 - 2 * bt);
-      const sD = dt * dt * (3 - 2 * dt);
-      badlandsFactor = sB * sD;
-    }
-    if (tundraW > 0.62 && G > 0.25) {
-      const gt = Math.min(1, (G - 0.25) / 0.30);
-      const tt = Math.min(1, (tundraW - 0.62) / 0.25);
-      const sG = gt * gt * (3 - 2 * gt);
-      const sT = tt * tt * (3 - 2 * tt);
-      glacierFactor = sG * sT;
+    // 6) Additional patch biomes.
+    const climateW = {
+      cold: ws[0],
+      temperate: ws[1],
+      hot: ws[2],
+    };
+    let patchWinner = null;
+    for (const p of PATCH_BIOMES) {
+      const cw = climateW[p.climate] || 0;
+      if (cw < 0.45) continue;
+      const n0 = w.biomeNoiseA(wx * freq * p.scale + p.ox, wz * freq * p.scale + p.oz);
+      const nj = w.biomeNoiseB(wx * freq * p.scale * 3 - p.oz, wz * freq * p.scale * 3 + p.ox);
+      const n = n0 + nj * 0.18;
+      if (n <= p.threshold) continue;
+      const nt = Math.min(1, (n - p.threshold) / (1 - p.threshold));
+      const ct = Math.min(1, (cw - 0.45) / 0.45);
+      const sN = nt * nt * (3 - 2 * nt);
+      const sC = ct * ct * (3 - 2 * ct);
+      const f = sN * sC;
+      if (!patchWinner || f > patchWinner.f) patchWinner = { biome: p.biome, f };
     }
 
     // 7) If volcanic is firing, lerp params toward volcanic for a hotter,
@@ -569,14 +649,9 @@ export class Chunk {
     }
 
     // 8) Lerp toward one sub-biome (the strongest) when active.
-    const sub = [
-      { b: BIOMES.swamp,   f: swampFactor },
-      { b: BIOMES.badlands,f: badlandsFactor },
-      { b: BIOMES.glacier, f: glacierFactor },
-    ].sort((a, b) => b.f - a.f)[0];
-    if (sub && sub.f > 0) {
-      const sb = sub.b;
-      const f = sub.f;
+    if (patchWinner && patchWinner.f > 0) {
+      const sb = patchWinner.biome;
+      const f = patchWinner.f;
       seaLevel     = seaLevel + (sb.seaLevel - seaLevel) * f;
       heightOffset = heightOffset + (sb.heightOffset - heightOffset) * f;
       for (let k = 0; k < 3; k++) {
@@ -589,17 +664,13 @@ export class Chunk {
     // surface flips cleanly.
     let dominant = bands[bestIdx];
     if (volcanicFactor >= 0.5) dominant = BIOMES.volcanic;
-    else if (swampFactor >= 0.5 && swampFactor >= badlandsFactor && swampFactor >= glacierFactor) dominant = BIOMES.swamp;
-    else if (badlandsFactor >= 0.5 && badlandsFactor >= glacierFactor) dominant = BIOMES.badlands;
-    else if (glacierFactor >= 0.5) dominant = BIOMES.glacier;
+    else if (patchWinner && patchWinner.f >= 0.5) dominant = patchWinner.biome;
 
     return {
       weights: ws,
       dominant,
       volcanicFactor,
-      swampFactor,
-      badlandsFactor,
-      glacierFactor,
+      patchFactor: patchWinner ? patchWinner.f : 0,
       seaLevel,
       heightAmp,
       heightFreq,
@@ -710,6 +781,7 @@ export class Chunk {
 
     // Decorative flowers on grass in every chunk (deterministic).
     this._scatterFlowers(heights, biomeAt, chRand);
+    this._scatterStructures(heights, biomeAt, chRand);
 
     // Caves + ore veins (survival worlds only; deterministic from seed + chunk).
     if (theme.mode === 'survival' && !theme.flat) {
@@ -829,6 +901,55 @@ export class Chunk {
           : (roll < 0.67 ? BLOCK.FLOWER_BLUE : BLOCK.FLOWER_YELLOW);
       }
       this.set(tx, h + 1, tz, flower);
+    }
+  }
+
+  _scatterStructures(heights, biomeAt, rand) {
+    const attempts = 2;
+    const originX = this.cx * CHUNK_SIZE;
+    const originZ = this.cz * CHUNK_SIZE;
+    for (let i = 0; i < attempts; i++) {
+      const tx = 2 + Math.floor(rand() * (CHUNK_SIZE - 4));
+      const tz = 2 + Math.floor(rand() * (CHUNK_SIZE - 4));
+      const h = heights[tz * CHUNK_SIZE + tx];
+      const biome = biomeAt[tz * CHUNK_SIZE + tx];
+      if (!biome) continue;
+      const bid = biome.dominant?.id || '';
+      const wx = originX + tx;
+      const wz = originZ + tz;
+      if ((bid === 'desert' || bid === 'badlands' || bid === 'mesa' || bid === 'canyon' || bid === 'dry_wastes' || bid === 'oasis') && rand() < 0.16) {
+        // Oasis: shallow water pool in hot biomes.
+        for (let dz = -2; dz <= 2; dz++) {
+          for (let dx = -2; dx <= 2; dx++) {
+            const x = tx + dx, z = tz + dz;
+            if (x < 1 || x >= CHUNK_SIZE - 1 || z < 1 || z >= CHUNK_SIZE - 1) continue;
+            const r2 = dx * dx + dz * dz;
+            if (r2 <= 2) this.set(x, h, z, BLOCK.WATER);
+            else if (r2 <= 5) this.set(x, h, z, BLOCK.SAND);
+          }
+        }
+        this.world.addStructureMarker('oasis', wx, wz);
+      } else if ((bid === 'tundra' || bid === 'glacier' || bid === 'frozen_river' || bid === 'ice_spikes') && rand() < 0.14) {
+        // Ice spike.
+        const spikeH = 4 + Math.floor(rand() * 5);
+        for (let y = 1; y <= spikeH; y++) this.set(tx, h + y, tz, BLOCK.ICE);
+        this.world.addStructureMarker('ice_spike', wx, wz);
+      } else if ((bid === 'forest' || bid === 'dark_forest' || bid === 'swamp' || bid === 'jungle' || bid === 'taiga') && rand() < 0.12) {
+        // Small stone ruin.
+        for (let dz = -1; dz <= 1; dz++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const x = tx + dx, z = tz + dz;
+            if (x < 1 || x >= CHUNK_SIZE - 1 || z < 1 || z >= CHUNK_SIZE - 1) continue;
+            this.set(x, h, z, BLOCK.DECO_BRICKS);
+          }
+        }
+        const pillars = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
+        for (const [dx, dz] of pillars) {
+          this.set(tx + dx, h + 1, tz + dz, BLOCK.STONE);
+          if (rand() < 0.7) this.set(tx + dx, h + 2, tz + dz, BLOCK.STONE);
+        }
+        this.world.addStructureMarker('ruin', wx, wz);
+      }
     }
   }
 
@@ -1018,8 +1139,16 @@ export class Chunk {
             for (let i = 0; i < 4; i++) {
               const c = face.corners[i];
               let yOff = c[1];
-              if (fluidG && face.normal[1] === 1) {
-                yOff = this._fluidCornerHeight(wx, wy, wz, fluidG, c);
+              if (fluidG) {
+                if (face.normal[1] === 1) {
+                  // Top face: per-corner fluid height (smooth surface).
+                  yOff = this._fluidCornerHeight(wx, wy, wz, fluidG, c);
+                } else if (face.normal[1] === 0 && c[1] === 1) {
+                  // Side faces: upper vertices follow local fluid height too.
+                  // This avoids tall "water curtains" and spike artifacts when
+                  // neighboring cells have different flow levels.
+                  yOff = this._fluidCornerHeight(wx, wy, wz, fluidG, c);
+                }
               }
               bucket.positions.push(
                 origin[0] + x + c[0],
