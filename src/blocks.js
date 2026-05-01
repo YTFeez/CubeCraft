@@ -35,9 +35,16 @@ export const BLOCK = {
   DIAMOND_PICKAXE: 30,
 };
 
+const EXTRA_BLOCK_START = 31;
+const EXTRA_BLOCK_COUNT = 120;
+for (let i = 0; i < EXTRA_BLOCK_COUNT; i++) {
+  BLOCK[`CUSTOM_${i + 1}`] = EXTRA_BLOCK_START + i;
+}
+export const EXTRA_BLOCK_IDS = Array.from({ length: EXTRA_BLOCK_COUNT }, (_, i) => EXTRA_BLOCK_START + i);
+
 const TILE = 16;
 const ATLAS_COLS = 4;
-const ATLAS_ROWS = 9;
+const ATLAS_ROWS = 40;
 
 // Tile index in the atlas (col + row * ATLAS_COLS). 4x5 grid:
 //  0 grass_top    1 grass_side  2 dirt        3 stone
@@ -114,6 +121,23 @@ export const BLOCK_INFO = {
   [BLOCK.IRON_PICKAXE]:    { name: 'Pioche en fer',    solid: true, transparent: false, fluid: false, emissive: 0, placeable: false, pickaxeTier: 3, hardness: 0 },
   [BLOCK.DIAMOND_PICKAXE]: { name: 'Pioche en diamant',solid: true, transparent: false, fluid: false, emissive: 0, placeable: false, pickaxeTier: 4, hardness: 0 },
 };
+
+for (let i = 0; i < EXTRA_BLOCK_COUNT; i++) {
+  const id = EXTRA_BLOCK_START + i;
+  const tile = 33 + i;
+  FACE_TILES[id] = { top: tile, bottom: tile, side: tile };
+  BLOCK_INFO[id] = {
+    name: `Bloc custom ${i + 1}`,
+    solid: true,
+    transparent: false,
+    fluid: false,
+    emissive: 0,
+    placeable: true,
+    hardness: 0.14 + (i % 5) * 0.03,
+    harvestLevel: 0,
+    harvestTool: null,
+  };
+}
 
 export const HOTBAR_BLOCKS = [
   BLOCK.GRASS, BLOCK.DIRT, BLOCK.STONE, BLOCK.SAND,
@@ -681,6 +705,44 @@ function paintProceduralAtlas(ctx) {
     c.fillRect(6, 7, 2, 8);
     speckle(c, [200, 255, 250], 6, 322);
   });
+
+  // Extra custom blocks (120): colorful procedural tiles for builders.
+  for (let i = 0; i < EXTRA_BLOCK_COUNT; i++) {
+    const tile = 33 + i;
+    const col = tile % ATLAS_COLS;
+    const row = Math.floor(tile / ATLAS_COLS);
+    fillTile(ctx, col, row, c => {
+      const hue = (i * 37) % 360;
+      const sat = 55 + (i % 4) * 8;
+      const light = 42 + (i % 5) * 6;
+      const base = hslToRgb(hue, sat, light);
+      noisePaint(c, base, 18, 1000 + i * 13);
+      speckle(c, [255, 255, 255], 7 + (i % 4), 2000 + i * 17, 0.22);
+      speckle(c, [0, 0, 0], 8 + (i % 5), 3000 + i * 19, 0.18);
+    });
+  }
+}
+
+function hslToRgb(h, s, l) {
+  const H = ((h % 360) + 360) % 360 / 360;
+  const S = Math.max(0, Math.min(1, s / 100));
+  const L = Math.max(0, Math.min(1, l / 100));
+  if (S === 0) {
+    const v = Math.round(L * 255);
+    return [v, v, v];
+  }
+  const q = L < 0.5 ? L * (1 + S) : L + S - L * S;
+  const p = 2 * L - q;
+  const f = (t) => {
+    let x = t;
+    if (x < 0) x += 1;
+    if (x > 1) x -= 1;
+    if (x < 1 / 6) return p + (q - p) * 6 * x;
+    if (x < 1 / 2) return q;
+    if (x < 2 / 3) return p + (q - p) * (2 / 3 - x) * 6;
+    return p;
+  };
+  return [Math.round(f(H + 1 / 3) * 255), Math.round(f(H) * 255), Math.round(f(H - 1 / 3) * 255)];
 }
 
 /**

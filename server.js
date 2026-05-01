@@ -17,6 +17,9 @@ const SAVE_DIR = path.join(__dirname, 'world-saves');
 const SAVE_INTERVAL_MS = 30_000;
 const DAY_LENGTH_S = 240; // one in-game day = 240 real seconds
 const GLOBAL_TIME_FILE = path.join(SAVE_DIR, '_global-time.json');
+const CHUNK_SIZE = 16;
+const DATA_DIR = path.join(__dirname, 'data');
+const STRUCTURES_FILE = path.join(DATA_DIR, 'structures.json');
 
 // Admin accounts get access to /commands. Default: just "EXE". Override with
 // the ADMIN_USERS env var (comma-separated, e.g. "EXE,Mod1,Mod2").
@@ -36,6 +39,26 @@ const ROOMS = [
 
 // --- Persistent state ---
 if (!fs.existsSync(SAVE_DIR)) fs.mkdirSync(SAVE_DIR, { recursive: true });
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+let structuresDb = {};
+try {
+  if (fs.existsSync(STRUCTURES_FILE)) {
+    const raw = JSON.parse(fs.readFileSync(STRUCTURES_FILE, 'utf8'));
+    if (raw && typeof raw === 'object') structuresDb = raw;
+  }
+} catch (e) {
+  console.warn('structures.json illisible:', e.message);
+  structuresDb = {};
+}
+
+function saveStructuresSync() {
+  try {
+    fs.writeFileSync(STRUCTURES_FILE, JSON.stringify(structuresDb, null, 2));
+  } catch (e) {
+    console.warn('Sauvegarde structures échouée:', e.message);
+  }
+}
 
 // Single time-of-day shared by *all* rooms. Restored from disk on boot, ticked
 // by the server itself so it never drifts and is identical for every player.
@@ -265,6 +288,10 @@ const ADMIN_HELP_LINES = [
   '/me <action> — emote',
   '/kick <pseudo> — déconnecte un joueur',
   '/clear, /resetworld — reset les edits du monde',
+  '/pos1, /pos2 — définit la sélection structure',
+  '/struct save <nom> — sauvegarde la zone sélectionnée',
+  '/struct load <nom> — place une structure à ta position',
+  '/struct list, /struct del <nom> — gère les structures',
   '/count, /players — nb de joueurs par monde',
   '/worlds — liste les mondes',
 ].join('\n');
@@ -290,6 +317,9 @@ const COMMAND_ALIASES = {
   me: ['emote', 'action', 'pose'],
   kick: ['k', 'boot', 'disconnect', 'remove'],
   clear: ['resetworld', 'reset', 'wipe', 'clean', 'purge', 'clearworld'],
+  pos1: ['p1', 'point1'],
+  pos2: ['p2', 'point2'],
+  struct: ['structure', 'schem', 'prefab'],
 };
 
 const COMMAND_ALIASES_INDEX = (() => {
@@ -352,6 +382,33 @@ function parseTimeArg(arg) {
     if (n >= 0 && n <= 1) return n;
   }
   return null;
+}
+
+function worldToChunkLocal(x, z) {
+  const cx = Math.floor(x / CHUNK_SIZE);
+  const cz = Math.floor(z / CHUNK_SIZE);
+  const lx = x - cx * CHUNK_SIZE;
+  const lz = z - cz * CHUNK_SIZE;
+  return { cx, cz, lx, lz };
+}
+
+function getEditedBlock(room, x, y, z) {
+  const { cx, cz, lx, lz } = worldToChunkLocal(x, z);
+  const chunkKey = `${cx},${cz}`;
+  const localKey = `${lx},${y},${lz}`;
+  const map = room.edits[chunkKey];
+  if (!map) return 0;
+  const v = map[localKey];
+  return typeof v === 'number' ? v : 0;
+}
+
+function setEditedBlock(room, x, y, z, blockId) {
+  const { cx, cz, lx, lz } = worldToChunkLocal(x, z);
+  const chunkKey = `${cx},${cz}`;
+  const localKey = `${lx},${y},${lz}`;
+  if (!room.edits[chunkKey]) room.edits[chunkKey] = {};
+  room.edits[chunkKey][localKey] = blockId | 0;
+  room.dirty = true;
 }
 
 function broadcastEverywhere(obj) {
@@ -488,6 +545,100 @@ function handleCommand(send, broadcast, me, room, body) {
       try { found.player.ws.close(); } catch {}
       sendSystem(send, `${found.player.name} a été kické.`, '#7fd87f');
       break;
+    }
+    case 'pos1': {
+      me.sel1 = {
+        x: Math.floor(me.x),
+        y: Math.floor(me.y),
+        z: Math.floor(me.z),
+      };
+      sendSystem(send, `pos1 = ${me.sel1.x}, ${me.sel1.y}, ${me.sel1.z}`, '#7fd87f');
+      break;
+    }
+    case 'pos2': {
+      me.sel2 = {
+        x: Math.floor(me.x),
+        y: Math.floor(me.y),
+        z: Math.floor(me.z),
+      };
+      sendSystem(send, `pos2 = ${me.sel2.x}, ${me.sel2.y}, ${me.sel2.z}`, '#7fd87f');
+      break;
+    }
+    case 'struct': {
+      const [subRaw, ...subRest] = arg.split(/\s+/).filter(Boolean);
+      const sub = (subRaw || '').toLowerCase();
+      const name = (subRest[0] || '').toLowerCase();
+      if (!sub || sub === 'help') {
+        return sendSystem(send, 'Usage: /struct <save|load|list|del> <nom>', '#9aa5b1');
+      }
+      if (sub === 'list') {
+        const names = Object.keys(structuresDb).sort();
+        return sendSystem(send, names.length ? `Structures: ${names.join(', ')}` : 'Aucune structure sauvegardée.', '#9aa5b1');
+      }
+      if ((sub === 'del' || sub === 'delete' || sub === 'rm') && name) {
+        if (!structuresDb[name]) return sendSystem(send, `Structure "${name}" introuvable.`, '#ff8080');
+        delete structuresDb[name];
+        saveStructuresSync();
+        return sendSystem(send, `Structure "${name}" supprimée.`, '#7fd87f');
+      }
+      if (sub === 'save') {
+        if (!name) return sendSystem(send, 'Usage: /struct save <nom>', '#ff8080');
+        if (!me.sel1 || !me.sel2) return sendSystem(send, 'Définis d\'abord /pos1 et /pos2.', '#ff8080');
+        const minX = Math.min(me.sel1.x, me.sel2.x);
+        const maxX = Math.max(me.sel1.x, me.sel2.x);
+        const minY = Math.min(me.sel1.y, me.sel2.y);
+        const maxY = Math.max(me.sel1.y, me.sel2.y);
+        const minZ = Math.min(me.sel1.z, me.sel2.z);
+        const maxZ = Math.max(me.sel1.z, me.sel2.z);
+        const sizeX = maxX - minX + 1;
+        const sizeY = maxY - minY + 1;
+        const sizeZ = maxZ - minZ + 1;
+        if (sizeX * sizeY * sizeZ > 200000) {
+          return sendSystem(send, 'Zone trop grande (max 200000 blocs).', '#ff8080');
+        }
+        const blocks = [];
+        for (let y = minY; y <= maxY; y++) {
+          for (let z = minZ; z <= maxZ; z++) {
+            for (let x = minX; x <= maxX; x++) {
+              const id = getEditedBlock(room, x, y, z);
+              if (id === 0) continue;
+              blocks.push([x - minX, y - minY, z - minZ, id]);
+            }
+          }
+        }
+        structuresDb[name] = {
+          name,
+          size: { x: sizeX, y: sizeY, z: sizeZ },
+          blocks,
+          updatedAt: Date.now(),
+          by: me.name,
+        };
+        saveStructuresSync();
+        return sendSystem(send, `Structure "${name}" sauvegardée (${blocks.length} blocs).`, '#7fd87f');
+      }
+      if (sub === 'load') {
+        if (!name) return sendSystem(send, 'Usage: /struct load <nom>', '#ff8080');
+        const st = structuresDb[name];
+        if (!st) return sendSystem(send, `Structure "${name}" introuvable.`, '#ff8080');
+        const ox = Math.floor(me.x);
+        const oy = Math.floor(me.y);
+        const oz = Math.floor(me.z);
+        for (const b of st.blocks || []) {
+          const [dx, dy, dz, id] = b;
+          const x = ox + (dx | 0);
+          const y = oy + (dy | 0);
+          const z = oz + (dz | 0);
+          setEditedBlock(room, x, y, z, id | 0);
+          const { cx, cz, lx, lz } = worldToChunkLocal(x, z);
+          broadcast(room, {
+            type: 'edit',
+            cx, cz, lx, ly: y, lz, blockId: id | 0,
+            by: playerId,
+          });
+        }
+        return sendSystem(send, `Structure "${name}" placée.`, '#7fd87f');
+      }
+      return sendSystem(send, 'Usage: /struct <save|load|list|del> <nom>', '#ff8080');
     }
     case 'clear': {
       const count = Object.values(room.edits).reduce((acc, m) => acc + Object.keys(m).length, 0);
@@ -780,6 +931,7 @@ function shutdown() {
     r.dirty = true; saveRoom(r);
   }
   globalTimeDirty = true; saveGlobalTime();
+  saveStructuresSync();
   try { accounts.saveSync(); } catch {}
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 1500);

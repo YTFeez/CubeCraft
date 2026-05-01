@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import {
-  BLOCK, HOTBAR_BLOCKS, BLOCK_INFO, isSolid, isFluidSource, blockIconDataURL,
+  BLOCK, HOTBAR_BLOCKS, BLOCK_INFO, EXTRA_BLOCK_IDS, isSolid, isFluidSource, blockIconDataURL,
   breakTimeSeconds, canHarvestBlock, dropIdForBlock, isPlaceable,
 } from './blocks.js';
 import {
@@ -34,6 +34,7 @@ const CREATIVE_PALETTE = [
   BLOCK.GRASS, BLOCK.DIRT, BLOCK.STONE, BLOCK.SAND,
   BLOCK.WOOD, BLOCK.PLANKS, BLOCK.LEAVES, BLOCK.GLASS,
   BLOCK.SNOW, BLOCK.ICE, BLOCK.CACTUS, BLOCK.OBSIDIAN,
+  ...EXTRA_BLOCK_IDS,
 ];
 
 export class Interaction {
