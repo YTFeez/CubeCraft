@@ -108,7 +108,7 @@ function runLocalCommand(rawText) {
   const s = session;
   switch (cmd) {
     case '/help':
-      addSystemLine('Commandes: /help, /tp x y z, /time <day|night|noon|midnight>, /gamemode <creative|survival>, /give <id|name> [count], /clearinv');
+      addSystemLine('Commandes: /help, /tp x y z, /time <day|night|noon|midnight>, /gamemode <creative|survival>, /fly, /give <id|name> [count], /clearinv');
       return;
     case '/tp': {
       if (rest.length < 3) return addSystemLine('Usage: /tp <x> <y> <z>', '#ff8080');
@@ -134,6 +134,13 @@ function runLocalCommand(rawText) {
       s.player.setMode(m);
       s.interaction.setMode(m);
       addSystemLine(`Mode changé: ${m}`, '#7fd87f');
+      return;
+    }
+    case '/fly': {
+      if (s.player.surviveMode) return addSystemLine('Le fly est disponible seulement en créatif.', '#ff8080');
+      s.player.flying = !s.player.flying;
+      s.player.velocity.set(0, 0, 0);
+      addSystemLine(`Fly: ${s.player.flying ? 'ON' : 'OFF'} (touche F aussi)`, '#7fd87f');
       return;
     }
     case '/give': {

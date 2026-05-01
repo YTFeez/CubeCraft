@@ -32,6 +32,7 @@ export class Player {
     this.keys = new Set();
     this.running = false;
     this.crouching = false;
+    this.flying = false;
     this.viewMode = 0; // 0: first, 1: third back, 2: third front
     this.mobileMode = false;
     this.locked = false;
@@ -96,8 +97,14 @@ export class Player {
   _onKeyDown(e) {
     if (e.repeat) return;
     this.keys.add(e.code);
+    if (e.code === 'KeyF' && !this.surviveMode) {
+      this.flying = !this.flying;
+      this.velocity.set(0, 0, 0);
+    }
     if (e.code === 'ControlLeft' || e.code === 'ControlRight') this.running = true;
-    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') this.crouching = true;
+    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+      if (!(this.flying && !this.surviveMode)) this.crouching = true;
+    }
     if (e.code === 'KeyV' || e.code === 'F5') this.viewMode = (this.viewMode + 1) % 3;
   }
   _onKeyUp(e) {
@@ -109,6 +116,7 @@ export class Player {
   // --- Survival API ---
   setMode(mode) {
     this.surviveMode = mode === 'survival';
+    if (this.surviveMode) this.flying = false;
     if (!this.surviveMode) {
       this.dead = false;
       this.health = this.maxHealth;
@@ -225,6 +233,22 @@ export class Player {
 
     const wantVX = (rightX * inputX + forwardX * -inputZ) * speed;
     const wantVZ = (rightZ * inputX + forwardZ * -inputZ) * speed;
+
+    // Creative fly (noclip): F toggles flight, Space up, Shift down.
+    if (this.flying && !this.surviveMode) {
+      const flySpeed = (sprinting ? RUN_SPEED : WALK_SPEED) * 1.4;
+      let inputY = 0;
+      if (this.keys.has('Space') || this.virtualJump) inputY += 1;
+      if (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')) inputY -= 1;
+      this.position.x += wantVX * dt;
+      this.position.z += wantVZ * dt;
+      this.position.y += inputY * flySpeed * dt;
+      this.velocity.set(wantVX, inputY * flySpeed, wantVZ);
+      this.onGround = false;
+      this.inWater = false;
+      this._updateCamera(dt);
+      return;
+    }
 
     // Apply horizontal velocity with blending depending on ground state.
     const blend = this.onGround ? 1 : AIR_CONTROL;
