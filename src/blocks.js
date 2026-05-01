@@ -239,12 +239,13 @@ const RESOURCE_PACK_TEXTURES = '/texture-pack/assets/minecraft/textures/';
 function loadPackImage(url) {
   return new Promise((resolve) => {
     const im = new Image();
-    // Ne pas mettre crossOrigin en same-origin : sans en-têtes CORS sur les PNG,
-    // le navigateur peut refuser l’image et on retombe alors tout le temps sur le procédural.
+    let done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    const timer = setTimeout(() => finish(null), 3000);
     im.decoding = 'async';
-    im.onload = () => resolve(im);
-    im.onerror = () => resolve(null);
-    im.src = url;
+    im.onload = () => { clearTimeout(timer); finish(im); };
+    im.onerror = () => { clearTimeout(timer); finish(null); };
+    try { im.src = url; } catch { clearTimeout(timer); finish(null); }
   });
 }
 
@@ -273,7 +274,9 @@ function blitPackOntoTile(ctx, col, row, img, rel = '') {
 function tintTile(ctx, col, row, mr, mg, mb) {
   const tx = col * TILE;
   const ty = row * TILE;
-  const img = ctx.getImageData(tx, ty, TILE, TILE);
+  let img;
+  try { img = ctx.getImageData(tx, ty, TILE, TILE); }
+  catch { return; }
   for (let i = 0; i < img.data.length; i += 4) {
     const a = img.data[i + 3];
     if (a === 0) continue;
@@ -281,7 +284,7 @@ function tintTile(ctx, col, row, mr, mg, mb) {
     img.data[i + 1] = clamp(img.data[i + 1] * mg);
     img.data[i + 2] = clamp(img.data[i + 2] * mb);
   }
-  ctx.putImageData(img, tx, ty);
+  try { ctx.putImageData(img, tx, ty); } catch {}
 }
 
 /** Cases atlas (col,row) alignées sur `FACE_TILES` / tiles procéduraux. */
@@ -319,12 +322,20 @@ const RESOURCE_PACK_SLOTS = [
 ];
 
 async function applyResourcePackTiles(ctx) {
-  await Promise.all(
+  const work = Promise.all(
     RESOURCE_PACK_SLOTS.map(async ({ col, row, rel }) => {
-      const img = await loadPackImage(RESOURCE_PACK_TEXTURES + rel);
-      if (img) blitPackOntoTile(ctx, col, row, img, rel);
+      try {
+        const img = await loadPackImage(RESOURCE_PACK_TEXTURES + rel);
+        if (img) {
+          try { blitPackOntoTile(ctx, col, row, img, rel); } catch {}
+        }
+      } catch {}
     }),
   );
+  await Promise.race([
+    work,
+    new Promise((resolve) => setTimeout(resolve, 7000)),
+  ]);
 }
 
 function paintProceduralAtlas(ctx) {
@@ -678,8 +689,8 @@ export async function buildAtlas() {
   canvas.width = TILE * ATLAS_COLS;
   canvas.height = TILE * ATLAS_ROWS;
   const ctx = canvas.getContext('2d');
-  paintProceduralAtlas(ctx);
-  await applyResourcePackTiles(ctx);
+  try { paintProceduralAtlas(ctx); } catch (e) { console.warn('paintProceduralAtlas failed', e); }
+  try { await applyResourcePackTiles(ctx); } catch (e) { console.warn('applyResourcePackTiles failed', e); }
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.magFilter = THREE.NearestFilter;

@@ -362,9 +362,46 @@ pauseDeleteAccountBtn?.addEventListener('click', async () => { await doDeleteAcc
 /** Atlas blocs (async : charge le resource pack `/texture-pack/` par-dessus le procédural). */
 let atlasCanvas = null;
 let atlasTex = null;
+function buildEmergencyAtlas() {
+  const tile = 16;
+  const cols = 4;
+  const rows = 9;
+  const canvas = document.createElement('canvas');
+  canvas.width = tile * cols;
+  canvas.height = tile * rows;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = c * tile;
+      const y = r * tile;
+      ctx.fillStyle = (r + c) % 2 === 0 ? '#8c8c8c' : '#6f6f6f';
+      ctx.fillRect(x, y, tile, tile);
+      ctx.fillStyle = 'rgba(255,255,255,0.12)';
+      ctx.fillRect(x, y, tile, 3);
+    }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.magFilter = THREE.NearestFilter;
+  texture.minFilter = THREE.NearestFilter;
+  texture.wrapS = THREE.ClampToEdgeWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+  return { canvas, texture };
+}
 async function ensureAtlas() {
   if (atlasCanvas && atlasTex) return;
-  const built = await buildAtlas();
+  let built;
+  try {
+    built = await buildAtlas();
+  } catch (err) {
+    console.warn('buildAtlas failed, using emergency atlas.', err);
+    built = buildEmergencyAtlas();
+  }
+  if (!built || !built.canvas || !built.texture) {
+    built = buildEmergencyAtlas();
+  }
   atlasCanvas = built.canvas;
   atlasTex = built.texture;
 }
@@ -394,11 +431,7 @@ async function joinWorld(themeId) {
   try {
     await ensureAtlas();
   } catch (e) {
-    console.error(e);
-    alert('Impossible de charger les textures du jeu.');
-    selectionEl.classList.remove('hidden');
-    loading.classList.add('hidden');
-    return;
+    console.warn('ensureAtlas fallback hit even after safeguards:', e);
   }
   progressBar.style.width = '10%';
 
@@ -768,6 +801,7 @@ async function initialGenerate(s) {
   const { world, player } = s;
   const total = (VIEW_RADIUS * 2 + 1) ** 2;
   let done = 0;
+  const deadline = performance.now() + 8000;
 
   // If we have a saved spawn, seed the player's position now so chunks are
   // generated around it (otherwise we generate around 0,0).
@@ -793,17 +827,21 @@ async function initialGenerate(s) {
 
   for (const ring of rings) {
     for (const [dx, dz] of ring) {
-      const ch = world.ensureChunk(cx + dx, cz + dz);
-      world.dirty.add(ch);
+      try {
+        const ch = world.ensureChunk(cx + dx, cz + dz);
+        world.dirty.add(ch);
+      } catch (e) { console.warn('ensureChunk failed', e); }
       done++;
     }
     progressBar.style.width = `${(done / total) * 100}%`;
     await new Promise(r => setTimeout(r, 0));
+    if (performance.now() > deadline) break;
   }
 
   for (const ch of world.chunks.values()) world.dirty.add(ch);
-  while (world.dirty.size > 0) {
-    world.flushDirty(8);
+  let guard = 0;
+  while (world.dirty.size > 0 && guard++ < 200 && performance.now() <= deadline) {
+    try { world.flushDirty(8); } catch (e) { console.warn('flushDirty failed', e); break; }
     await new Promise(r => setTimeout(r, 0));
   }
 
