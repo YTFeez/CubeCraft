@@ -160,6 +160,32 @@ async function postJson(url, body, token) {
   return { ok: res.ok, status: res.status, data: data || {} };
 }
 
+async function pingRooms(timeoutMs = 6000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch('/api/rooms', { signal: ctrl.signal, cache: 'no-store' });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function waitForServerWakeup(maxWaitMs = 45000) {
+  const start = performance.now();
+  let attempt = 0;
+  while (performance.now() - start < maxWaitMs) {
+    attempt++;
+    const ok = await pingRooms(5000);
+    if (ok) return true;
+    const backoff = Math.min(4000, 700 + attempt * 350);
+    await new Promise((r) => setTimeout(r, backoff));
+  }
+  return false;
+}
+
 async function getMe(token) {
   try {
     const res = await fetch('/api/me', { headers: { 'Authorization': 'Bearer ' + token } });
@@ -435,6 +461,10 @@ async function joinWorld(themeId) {
   }
   progressBar.style.width = '10%';
 
+  // Render free instances can sleep: wake/ping HTTP before opening WebSocket.
+  progressBar.style.width = '14%';
+  await waitForServerWakeup(45000);
+
   session = await createSession(theme, name).catch(err => {
     console.error(err);
     if (err && err.message === 'AUTH') {
@@ -444,7 +474,7 @@ async function joinWorld(themeId) {
       showAuthScreen();
       return null;
     }
-    alert('Connexion au serveur impossible. Le serveur Node tourne-t-il bien ?');
+    alert('Connexion serveur impossible pour le moment. Le serveur se reveille peut-etre encore (Render). Reessaie dans 10-20 secondes.');
     selectionEl.classList.remove('hidden');
     loading.classList.add('hidden');
     return null;
@@ -611,7 +641,7 @@ async function createSession(theme, name) {
   const network = new Network({ url: wsUrl, roomId: theme.id, name, token: auth.token, handlers });
   let welcome = null;
   let connectErr = null;
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= 8; attempt++) {
     try {
       welcome = await network.connect();
       connectErr = null;
@@ -619,9 +649,9 @@ async function createSession(theme, name) {
     } catch (err) {
       connectErr = err;
       if (err?.message === 'AUTH') throw err;
-      if (attempt < 3) {
+      if (attempt < 8) {
         // Render free plan can need a few seconds to wake up.
-        await new Promise((r) => setTimeout(r, 1500 * attempt));
+        await new Promise((r) => setTimeout(r, Math.min(6000, 900 * attempt)));
       }
     }
   }

@@ -222,7 +222,26 @@ app.get('/api/rooms', (req, res) => {
 const server = http.createServer(app);
 
 // --- WebSocket hub ---
-const wss = new WebSocketServer({ server, path: '/ws' });
+// Use manual upgrade handling so reverse proxies / trailing slashes never break
+// the handshake (Render can forward `/ws` or `/ws/` depending on edge pathing).
+const wss = new WebSocketServer({ noServer: true });
+server.on('upgrade', (req, socket, head) => {
+  let pathname = '/';
+  try {
+    pathname = new URL(req.url || '/', 'http://localhost').pathname;
+  } catch {}
+  const ok =
+    pathname === '/ws' ||
+    pathname === '/ws/' ||
+    pathname === '/';
+  if (!ok) {
+    try { socket.destroy(); } catch {}
+    return;
+  }
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    wss.emit('connection', ws, req);
+  });
+});
 
 let nextPlayerId = 1;
 const PLAYER_COLORS = ['#ff7676', '#ffd166', '#06d6a0', '#118ab2', '#c77dff', '#f78c6b', '#7bdff2', '#b5ead7'];
