@@ -427,9 +427,9 @@ const RESOURCE_PACK_SLOTS = [
   { col: 0, row: 42, rel: 'item/blue_dye.png' },
   { col: 1, row: 42, rel: 'item/yellow_dye.png' },
   { col: 2, row: 42, rel: 'block/red_sand.png' },
-  { col: 3, row: 42, rel: 'block/blue_wool.png' },
-  { col: 0, row: 43, rel: 'block/green_wool.png' },
-  { col: 1, row: 43, rel: 'block/purple_wool.png' },
+  { col: 3, row: 42, rel: 'block/blue_concrete_powder.png' },
+  { col: 0, row: 43, rel: 'block/green_concrete_powder.png' },
+  { col: 1, row: 43, rel: 'block/purple_concrete_powder.png' },
 ];
 
 async function applyResourcePackTiles(ctx) {
