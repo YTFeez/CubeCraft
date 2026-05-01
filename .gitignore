@@ -55,6 +55,16 @@ texture-pack/assets/minecraft/textures/gui/*
 !texture-pack/assets/minecraft/textures/item/stone_pickaxe.png
 !texture-pack/assets/minecraft/textures/item/iron_pickaxe.png
 !texture-pack/assets/minecraft/textures/item/diamond_pickaxe.png
+!texture-pack/assets/minecraft/textures/block/poppy.png
+!texture-pack/assets/minecraft/textures/block/cornflower.png
+!texture-pack/assets/minecraft/textures/block/dandelion.png
+!texture-pack/assets/minecraft/textures/item/red_dye.png
+!texture-pack/assets/minecraft/textures/item/blue_dye.png
+!texture-pack/assets/minecraft/textures/item/yellow_dye.png
+!texture-pack/assets/minecraft/textures/block/red_sand.png
+!texture-pack/assets/minecraft/textures/block/blue_concrete_powder.png
+!texture-pack/assets/minecraft/textures/block/green_concrete_powder.png
+!texture-pack/assets/minecraft/textures/block/purple_concrete_powder.png
 !texture-pack/assets/minecraft/textures/gui/menu_background.png
 !texture-pack/assets/minecraft/textures/gui/menu_list_background.png
 !texture-pack/assets/minecraft/textures/gui/inworld_menu_list_background.png
