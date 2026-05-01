@@ -256,6 +256,9 @@ function blitPackOntoTile(ctx, col, row, img, rel = '') {
   const dy = row * TILE;
   const sw = Math.min(TILE, img.naturalWidth);
   const sh = Math.min(TILE, img.naturalHeight);
+  // Important: clear the tile first so transparent item pixels don't blend
+  // with procedural fallback pixels underneath.
+  ctx.clearRect(dx, dy, TILE, TILE);
   ctx.drawImage(img, 0, 0, sw, sh, dx, dy, TILE, TILE);
   // Beaucoup de packs modernes stockent l'eau/lave en textures quasi
   // grayscale (la vraie coloration est faite par le moteur Minecraft via tint).
