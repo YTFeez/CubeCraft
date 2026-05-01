@@ -521,7 +521,41 @@ export class Chunk {
       heightFreq[2]+= wi * b.heightFreq[2];
     }
 
-    // 6) If volcanic is firing, lerp params toward volcanic for a hotter,
+    // 6) Secondary sub-biomes carved inside the major T-bands.
+    // - swamp in forest
+    // - badlands in desert
+    // - glacier in tundra
+    const S = w.biomeNoiseB(wx * freq * 2.6 + 2800, wz * freq * 2.6 - 1450);
+    const B = w.biomeNoiseA(wx * freq * 2.4 - 3500, wz * freq * 2.4 + 4100);
+    const G = w.biomeNoiseA(wx * freq * 2.8 + 7200, wz * freq * 2.8 + 800);
+    const forestW = ws[1];
+    const tundraW = ws[0];
+    let swampFactor = 0;
+    let badlandsFactor = 0;
+    let glacierFactor = 0;
+    if (forestW > 0.55 && S > 0.28) {
+      const st = Math.min(1, (S - 0.28) / 0.32);
+      const ft = Math.min(1, (forestW - 0.55) / 0.30);
+      const sS = st * st * (3 - 2 * st);
+      const sF = ft * ft * (3 - 2 * ft);
+      swampFactor = sS * sF;
+    }
+    if (desertW > 0.60 && B > 0.22) {
+      const bt = Math.min(1, (B - 0.22) / 0.35);
+      const dt = Math.min(1, (desertW - 0.60) / 0.25);
+      const sB = bt * bt * (3 - 2 * bt);
+      const sD = dt * dt * (3 - 2 * dt);
+      badlandsFactor = sB * sD;
+    }
+    if (tundraW > 0.62 && G > 0.25) {
+      const gt = Math.min(1, (G - 0.25) / 0.30);
+      const tt = Math.min(1, (tundraW - 0.62) / 0.25);
+      const sG = gt * gt * (3 - 2 * gt);
+      const sT = tt * tt * (3 - 2 * tt);
+      glacierFactor = sG * sT;
+    }
+
+    // 7) If volcanic is firing, lerp params toward volcanic for a hotter,
     //    pittier terrain inside the patch.
     if (volcanicFactor > 0) {
       const vb = BIOMES.volcanic;
@@ -534,14 +568,38 @@ export class Chunk {
       }
     }
 
+    // 8) Lerp toward one sub-biome (the strongest) when active.
+    const sub = [
+      { b: BIOMES.swamp,   f: swampFactor },
+      { b: BIOMES.badlands,f: badlandsFactor },
+      { b: BIOMES.glacier, f: glacierFactor },
+    ].sort((a, b) => b.f - a.f)[0];
+    if (sub && sub.f > 0) {
+      const sb = sub.b;
+      const f = sub.f;
+      seaLevel     = seaLevel + (sb.seaLevel - seaLevel) * f;
+      heightOffset = heightOffset + (sb.heightOffset - heightOffset) * f;
+      for (let k = 0; k < 3; k++) {
+        heightAmp[k]  = heightAmp[k] + (sb.heightAmp[k]  - heightAmp[k])  * f;
+        heightFreq[k] = heightFreq[k] + (sb.heightFreq[k] - heightFreq[k]) * f;
+      }
+    }
+
     // Pick dominant biome: volcanic only when its factor crosses 0.5 so
     // surface flips cleanly.
-    const dominant = volcanicFactor >= 0.5 ? BIOMES.volcanic : bands[bestIdx];
+    let dominant = bands[bestIdx];
+    if (volcanicFactor >= 0.5) dominant = BIOMES.volcanic;
+    else if (swampFactor >= 0.5 && swampFactor >= badlandsFactor && swampFactor >= glacierFactor) dominant = BIOMES.swamp;
+    else if (badlandsFactor >= 0.5 && badlandsFactor >= glacierFactor) dominant = BIOMES.badlands;
+    else if (glacierFactor >= 0.5) dominant = BIOMES.glacier;
 
     return {
       weights: ws,
       dominant,
       volcanicFactor,
+      swampFactor,
+      badlandsFactor,
+      glacierFactor,
       seaLevel,
       heightAmp,
       heightFreq,
@@ -651,7 +709,7 @@ export class Chunk {
     }
 
     // Decorative flowers on grass in every chunk (deterministic).
-    this._scatterFlowers(heights, chRand);
+    this._scatterFlowers(heights, biomeAt, chRand);
 
     // Caves + ore veins (survival worlds only; deterministic from seed + chunk).
     if (theme.mode === 'survival' && !theme.flat) {
@@ -745,19 +803,31 @@ export class Chunk {
     }
   }
 
-  _scatterFlowers(heights, rand) {
-    const attempts = 18;
+  _scatterFlowers(heights, biomeAt, rand) {
+    const attempts = 22;
     for (let i = 0; i < attempts; i++) {
       const tx = Math.floor(rand() * CHUNK_SIZE);
       const tz = Math.floor(rand() * CHUNK_SIZE);
       const h = heights[tz * CHUNK_SIZE + tx];
-      if (h <= SEA_LEVEL + 1 || h >= WORLD_HEIGHT - 3) continue;
+      const biome = biomeAt[tz * CHUNK_SIZE + tx];
+      if (h <= SEA_LEVEL + 1 || h >= WORLD_HEIGHT - 3 || !biome) continue;
       if (this.get(tx, h, tz) !== BLOCK.GRASS) continue;
       if (this.get(tx, h + 1, tz) !== BLOCK.AIR) continue;
+      const bid = biome.dominant?.id || '';
+      if (bid === 'desert' || bid === 'badlands' || bid === 'volcanic') continue;
+      // Swamp: sparser flowers. Glacier/tundra: mostly yellow + sparse.
+      if ((bid === 'swamp' && rand() > 0.45) || ((bid === 'glacier' || bid === 'tundra') && rand() > 0.32)) continue;
       const roll = rand();
-      const flower = roll < 0.34
-        ? BLOCK.FLOWER_RED
-        : (roll < 0.67 ? BLOCK.FLOWER_BLUE : BLOCK.FLOWER_YELLOW);
+      let flower;
+      if (bid === 'glacier' || bid === 'tundra') {
+        flower = roll < 0.7 ? BLOCK.FLOWER_YELLOW : (roll < 0.88 ? BLOCK.FLOWER_BLUE : BLOCK.FLOWER_RED);
+      } else if (bid === 'swamp') {
+        flower = roll < 0.6 ? BLOCK.FLOWER_BLUE : (roll < 0.85 ? BLOCK.FLOWER_YELLOW : BLOCK.FLOWER_RED);
+      } else {
+        flower = roll < 0.34
+          ? BLOCK.FLOWER_RED
+          : (roll < 0.67 ? BLOCK.FLOWER_BLUE : BLOCK.FLOWER_YELLOW);
+      }
       this.set(tx, h + 1, tz, flower);
     }
   }

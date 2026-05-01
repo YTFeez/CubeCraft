@@ -47,6 +47,8 @@ let animating = false;
 let last = performance.now();
 let fpsFrames = 0;
 let fpsAcc = 0;
+// Nouveau seed a chaque relancement du site => nouvelle map complete.
+const BOOT_WORLD_SEED = `${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
 const soloChatState = {
   sent: [],
   sentIndex: 0,
@@ -278,7 +280,8 @@ async function initialGenerate(s) {
 }
 
 async function joinWorld(themeId) {
-  const theme = themeById(themeId);
+  const baseTheme = themeById(themeId);
+  const theme = { ...baseTheme, seed: `${baseTheme.seed}-boot-${BOOT_WORLD_SEED}` };
   selectionEl.classList.add('hidden');
   loading.classList.remove('hidden');
   progressBar.style.width = '5%';

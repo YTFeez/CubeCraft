@@ -62,6 +62,39 @@ export const BIOMES = {
     fluid: { id: BLOCK.LAVA, level: 22 },
     trees: { density: 1, type: 'dead' },
   },
+  swamp: {
+    id: 'swamp',
+    T: 0.1, // temperate-humid patch inside forest band
+    seaLevel: 25,
+    heightAmp: [4, 2, 4],
+    heightFreq: [0.014, 0.05, 0.004],
+    heightOffset: -1, // flatter and wetter than forest
+    surface: { top: BLOCK.GRASS, beach: BLOCK.DIRT, sub: BLOCK.DIRT, deep: BLOCK.STONE, bedrock: BLOCK.BEDROCK },
+    fluid: { id: BLOCK.WATER, level: 25 },
+    trees: { density: 4, type: 'oak' },
+  },
+  badlands: {
+    id: 'badlands',
+    T: 0.85, // hot-dry patch inside desert band
+    seaLevel: 23,
+    heightAmp: [10, 4, 7],
+    heightFreq: [0.016, 0.055, 0.0045],
+    heightOffset: 3,
+    surface: { top: BLOCK.SAND_RED, beach: BLOCK.SAND_RED, sub: BLOCK.SAND_RED, deep: BLOCK.ROCK_GRANITE, bedrock: BLOCK.BEDROCK },
+    fluid: null,
+    trees: { density: 1, type: 'cactus' },
+  },
+  glacier: {
+    id: 'glacier',
+    T: -0.9, // very cold patch inside tundra band
+    seaLevel: 24,
+    heightAmp: [7, 3, 8],
+    heightFreq: [0.016, 0.052, 0.005],
+    heightOffset: 2,
+    surface: { top: BLOCK.SNOW, beach: BLOCK.ICE, sub: BLOCK.ICE, deep: BLOCK.ROCK_MARBLE, bedrock: BLOCK.BEDROCK },
+    fluid: { id: BLOCK.ICE, level: 24 },
+    trees: { density: 1, type: 'spruce' },
+  },
 };
 
 // =============================================================================
