@@ -280,12 +280,14 @@ async function joinWorld(themeId) {
 
   const world = new World(theme, scene, opaqueMat, transparentMat, waterMat);
   const player = new Player(camera, world, canvas);
+  const startMode = theme.mode === 'survival' ? 'survival' : 'creative';
+  player.setMode(startMode);
   const audio = new Audio();
   const particles = new Particles(scene, atlasTex);
   const interaction = new Interaction({
     camera, world, player, scene, atlasCanvas, audio,
     hotbar: theme.hotbar,
-    mode: theme.mode || 'creative',
+    mode: startMode,
     onBreak: (x, y, z, id) => particles.spawnBreak(x, y, z, id),
     onEdit: () => {},
     onSlot: () => {},
@@ -300,6 +302,7 @@ async function joinWorld(themeId) {
   menu.classList.remove('hidden');
   menuSubtitle.textContent = `Mode minimal - ${theme.name}`;
   serverInfoEl.textContent = `Mode minimal local`;
+  addSystemLine(`Mode actuel: ${startMode}. Tape /gamemode creative|survival ou appuie sur G.`);
   if (!animating) { animating = true; animate(); }
 }
 
@@ -417,6 +420,15 @@ chatInput?.addEventListener('keydown', (e) => {
 
 window.addEventListener('keydown', (e) => {
   if (!session) return;
+  if (e.code === 'KeyG' && !e.repeat) {
+    if (document.activeElement && ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+    const nextMode = session.player.surviveMode ? 'creative' : 'survival';
+    session.player.setMode(nextMode);
+    session.interaction.setMode(nextMode);
+    addSystemLine(`Mode changé: ${nextMode}`, '#7fd87f');
+    e.preventDefault();
+    return;
+  }
   if (e.code === 'KeyT' && !chatInput?.classList.contains('visible')) {
     openChat();
     e.preventDefault();
